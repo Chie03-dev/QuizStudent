@@ -1,0 +1,164 @@
+package com.student.quiz.net
+
+import org.json.JSONObject
+
+/**
+ * Wire helpers for the envelope described in docs/protocol.md:
+ *   { "t": "<type>", "d": { ... } }
+ * The server is authoritative; this app only sends join/hb and reads replies.
+ */
+object Protocol {
+
+    const val PATH = "/ws"
+
+    fun join(pin: String, name: String, deviceToken: String): String {
+        val d = JSONObject()
+            .put("pin", pin)
+            .put("name", name)
+            .put("deviceToken", deviceToken)
+        return envelope("join", d)
+    }
+
+    fun heartbeat(): String = envelope("hb", JSONObject())
+
+    /** Step 2: an answer for one question. */
+    fun answer(qid: String, value: Any, seq: Long): String {
+        val d = JSONObject()
+            .put("qid", qid)
+            .put("value", value)
+            .put("seq", seq)
+        return envelope("answer", d)
+    }
+
+    private fun envelope(type: String, data: JSONObject): String =
+        JSONObject().put("t", type).put("d", data).toString()
+
+    /** Decoded server -> phone messages. */
+    sealed interface ServerMessage {
+        data class Joined(val studentId: String, val deviceToken: String?) : ServerMessage
+        data class Failure(val code: String) : ServerMessage
+        data object Kick : ServerMessage
+        data class QuizStartMessage(val quiz: com.student.quiz.data.QuizStart) : ServerMessage
+        data class AnswersState(val answers: Map<String, Any?>) : ServerMessage
+        data class Ack(val qid: String, val seq: Long) : ServerMessage
+        data class QuizEnd(val reason: String) : ServerMessage
+        data class Unknown(val type: String) : ServerMessage
+    }
+
+    fun parse(text: String): ServerMessage {
+        val root = JSONObject(text)
+        return when (val type = root.optString("t")) {
+            "joined" -> {
+                val d = root.optJSONObject("d") ?: JSONObject()
+                ServerMessage.Joined(
+                    studentId = d.optString("studentId"),
+                    deviceToken = d.optString("deviceToken").ifBlank { null },
+                )
+            }
+            "error" -> ServerMessage.Failure(root.optJSONObject("d")?.optString("code").orEmpty())
+            "kick" -> ServerMessage.Kick
+            "quiz_start" -> ServerMessage.QuizStartMessage(parseQuizStart(root.optJSONObject("d")))
+            "answers_state" -> ServerMessage.AnswersState(parseAnswersState(root.optJSONObject("d")))
+            "ack" -> {
+                val d = root.optJSONObject("d") ?: JSONObject()
+                ServerMessage.Ack(d.optString("qid"), d.optLong("seq"))
+            }
+            "quiz_end" -> ServerMessage.QuizEnd(root.optJSONObject("d")?.optString("reason").orEmpty())
+            else -> ServerMessage.Unknown(type)
+        }
+    }
+
+    /** Parses quiz_start.d into the eight question shapes. */
+    fun parseQuizStart(d: JSONObject?): com.student.quiz.data.QuizStart {
+        val data = d ?: JSONObject()
+        val questions = ArrayList<com.student.quiz.data.Question>()
+        data.optJSONArray("questions")?.let { array ->
+            for (i in 0 until array.length()) {
+                array.optJSONObject(i)?.let { raw -> parseQuestion(raw)?.let(questions::add) }
+            }
+        }
+        return com.student.quiz.data.QuizStart(
+            quizId = data.optString("quizId"),
+            title = data.optString("title"),
+            questions = questions,
+            endsAt = data.optLong("endsAt"),
+            serverTime = data.optLong("serverTime"),
+        )
+    }
+
+    private fun parseQuestion(raw: JSONObject): com.student.quiz.data.Question? {
+        val qid = raw.optString("qid")
+        val body = raw.optString("body")
+        val points = if (raw.has("points")) raw.optDouble("points", 0.0) else 0.0
+        return when (raw.optString("type")) {
+            "mcq" -> com.student.quiz.data.Question.Mcq(
+                qid, body, points, parseOptions(raw.optJSONArray("options")),
+            )
+            "tf" -> com.student.quiz.data.Question.Tf(qid, body, points)
+            "identification" -> com.student.quiz.data.Question.Identification(qid, body, points)
+            "fillin" -> com.student.quiz.data.Question.FillIn(qid, body, points, raw.optInt("blanks"))
+            "enumeration" -> com.student.quiz.data.Question.Enumeration(
+                qid, body, points, raw.optInt("count"),
+            )
+            "problem" -> com.student.quiz.data.Question.Problem(qid, body, points)
+            "matching" -> com.student.quiz.data.Question.Matching(
+                qid, body, points,
+                left = parseItems(raw.optJSONArray("left"), "text"),
+                right = parseItems(raw.optJSONArray("right"), "text"),
+            )
+            "connect" -> com.student.quiz.data.Question.Connect(
+                qid, body, points,
+                prompts = parseItems(raw.optJSONArray("prompts"), "text"),
+                answers = parseItems(raw.optJSONArray("answers"), "text"),
+            )
+            else -> null // Unknown type: skip rather than crash the whole quiz.
+        }
+    }
+
+    private fun parseOptions(array: org.json.JSONArray?): List<com.student.quiz.data.Option> {
+if (array == null) return emptyList()
+val options = ArrayList<com.student.quiz.data.Option>(array.length())
+for (i in 0 until array.length()) {
+val obj = array.optJSONObject(i) ?: continue
+options.add(
+com.student.quiz.data.Option(id = obj.optString("id"), text = obj.optString("text")),
+)
+}
+return options
+}
+
+private fun parseItems(array: org.json.JSONArray?, textKey: String): List<com.student.quiz.data.Item> {
+        if (array == null) return emptyList()
+        val items = ArrayList<com.student.quiz.data.Item>(array.length())
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            items.add(
+                com.student.quiz.data.Item(
+                    id = obj.optString("id"),
+                    text = obj.optString(textKey),
+                ),
+            )
+        }
+        return items
+    }
+
+    /** Parses answers_state.d.answers into raw JSON values keyed by qid. */
+    fun parseAnswersState(d: JSONObject?): Map<String, Any?> {
+        val answers = LinkedHashMap<String, Any?>()
+        val obj = d?.optJSONObject("answers") ?: return answers
+        obj.keys().asSequence().forEach { qid -> answers[qid] = obj.get(qid) }
+        return answers
+    }
+
+    /** Human-readable text for the four error codes the server may send. */
+    fun errorMessage(code: String): String = when (code) {
+        "BAD_PIN" -> "Wrong PIN. Check the code on the instructor's screen and try again."
+        "NAME_TAKEN" -> "That name is already in this quiz. Pick a different name."
+        "RATE_LIMITED" -> "Too many wrong PINs from this network. Wait about a minute."
+        "CLOSED" -> "The quiz has been closed by the instructor."
+        "QUIZ_ENDED" -> "The quiz has ended."
+        "BAD_ANSWER" -> "The instructor's computer could not accept that answer."
+        "UNKNOWN_QUESTION" -> "That question is not part of this quiz."
+        else -> "Could not join: $code"
+    }
+}

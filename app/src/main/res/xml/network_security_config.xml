@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The quiz server speaks plain ws:// on the local network. Android's network
+     security config has no CIDR syntax, so cleartext is enabled app-wide; the app
+     only ever opens ws:// connections to addresses the instructor hands it
+     (scanned QR or mDNS), and never to any internet host. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
