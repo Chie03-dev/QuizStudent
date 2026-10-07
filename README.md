@@ -1,0 +1,20 @@
+# Quiz Student App (Android)
+
+An offline, LAN-only Android client for the Quiz system, built with Kotlin and Jetpack Compose.
+
+## Features
+- Local LAN connection over WebSocket to the instructor server.
+- Service discovery via mDNS / DNS-SD or QR code scanning.
+- Support for multiple question types (MCQ, True/False, Identification, Fill-in, Enumeration, Problem, Matching, Connect).
+- In-composition UI for all interactive elements to prevent window focus loss and student app pause triggers.
+- Robust state restoration and queue management.
+
+## Tech Stack
+- Kotlin & Jetpack Compose (Material 3)
+- OkHttp WebSocket
+- NsdManager for local network discovery
+- CameraX and ML Kit barcode scanner
+
+## Requirements
+- Android 8.0 (API level 26) or higher.
+- Local network connection to the quiz instructor server.
