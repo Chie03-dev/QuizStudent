@@ -1,36 +1,98 @@
 package com.student.quiz
 
 import android.Manifest
+import android.app.Activity
+import android.app.ActivityManager
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.student.quiz.data.LockCommand
+import com.student.quiz.net.ConnState
 import com.student.quiz.ui.AppViewModel
 import com.student.quiz.ui.EndedScreen
+import com.student.quiz.ui.FinishedScreen
 import com.student.quiz.ui.JoinScreen
 import com.student.quiz.ui.LobbyScreen
+import com.student.quiz.ui.PausedScreen
 import com.student.quiz.ui.QuizScreen
 import com.student.quiz.ui.Screen
 import com.student.quiz.ui.ScanScreen
 import com.student.quiz.ui.theme.QuizStudentTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: AppViewModel by viewModels()
+
+    /** Pinned with startLockTask() while the quiz runs with lock on. */
+    private var pinned = false
+
+    /**
+     * Polls getLockTaskModeState() while the quiz runs. The student can leave
+     * screen pinning with the phone's button combination, and there is no
+     * callback for that, so the state has to be looked at.
+     */
+    private val pinPoll = object : Runnable {
+        override fun run() {
+            reportPinState()
+            if (viewModel.quizRunning()) handler.postDelayed(this, PIN_POLL_MS)
+        }
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // FLAG_SECURE itself is applied and removed by QuizApp, which knows
+        // when the quiz starts and ends.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // The only Android part of pinning: everything else about lock
+                // is decided by LockController and sent by the ViewModel.
+                viewModel.pinCommands.collect { command ->
+                    // Only pin commands reach this flow; focus messages are
+                    // sent by the ViewModel itself.
+                    when (command) {
+                        LockCommand.StartPin -> runCatching {
+                            startLockTask()
+                            pinned = true
+                        }.onFailure { Log.w(TAG, "startLockTask failed: ${it.message}") }
+                        LockCommand.StopPin -> {
+                            runCatching { stopLockTask() }
+                                .onFailure { Log.w(TAG, "stopLockTask failed: ${it.message}") }
+                            pinned = false
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+        }
         setContent {
             QuizStudentTheme {
                 Surface(
@@ -41,6 +103,51 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // The notification shade and the recents switcher both take the window
+        // focus without stopping the activity, so this is its own event.
+        viewModel.onWindowFocusChanged(hasFocus)
+        // Coming back with lock on but no lock task means unpinning.
+        if (hasFocus) reportPinState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.onWindowFocusChanged(true)
+        viewModel.onStopped(false)
+        reportPinState()
+        handler.removeCallbacks(pinPoll)
+        if (viewModel.quizRunning()) handler.postDelayed(pinPoll, PIN_POLL_MS)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        viewModel.onStopped(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        viewModel.onStopped(true)
+        handler.removeCallbacks(pinPoll)
+    }
+
+    /** Reads the real lock task mode and hands it to the controller. */
+    private fun reportPinState() {
+        if (!viewModel.quizRunning()) return
+        val state = getSystemService(ActivityManager::class.java)
+            ?.lockTaskModeState ?: ActivityManager.LOCK_TASK_MODE_NONE
+        val nowPinned = state != ActivityManager.LOCK_TASK_MODE_NONE
+        if (nowPinned != pinned && !nowPinned) Log.i(TAG, "Screen pinning ended")
+        pinned = nowPinned
+        viewModel.onPinState(nowPinned)
+    }
+
+    private companion object {
+        const val TAG = "MainActivity"
+        const val PIN_POLL_MS = 1_000L
     }
 }
 
@@ -53,6 +160,9 @@ private fun QuizApp(vm: AppViewModel = viewModel()) {
     val cameraPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        // A permission dialog takes the window focus, so no focus event is
+        // reported while it is up.
+        vm.onPermissionDialog(false)
         if (granted) vm.openScanner() else vm.onCameraDenied()
     }
     val onScanClicked: () -> Unit = {
@@ -60,7 +170,39 @@ private fun QuizApp(vm: AppViewModel = viewModel()) {
             context,
             Manifest.permission.CAMERA,
         ) == PackageManager.PERMISSION_GRANTED
-        if (already) vm.openScanner() else cameraPermission.launch(Manifest.permission.CAMERA)
+        if (already) {
+            vm.openScanner()
+        } else {
+            vm.onPermissionDialog(true)
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    // FLAG_SECURE blocks screenshots and screen recording and blanks the app in
+    // the recents view. It is set for as long as the quiz runs, so quiz_end
+    // takes it off again.
+    val activity = context as? Activity
+    val quizRunning = state.lock.running
+    DisposableEffect(activity, quizRunning) {
+        val window = activity?.window
+        if (quizRunning && window != null) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE,
+            )
+        }
+        onDispose {
+            if (window != null) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    // Back is ignored while the quiz is pinned: there is nowhere to go.
+    BackHandler(enabled = state.lock.running && state.lock.lockMode && state.lock.pinned) {}
+
+    // A rejected connection means a kick or a closed session; leaving releases
+    // the pin. This covers screens the quiz screen no longer renders.
+    LaunchedEffect(state.conn) {
+        if (state.conn is ConnState.Rejected) vm.leaveQuiz()
     }
 
     when (val screen = state.screen) {
@@ -69,7 +211,15 @@ private fun QuizApp(vm: AppViewModel = viewModel()) {
         is Screen.Lobby -> LobbyScreen(screen.name, state.conn, vm)
         // quiz_start sets both together, so this is only a guard against a blank
         // frame between the quiz ending and the screen switching.
-        is Screen.Quiz -> state.quiz?.let { QuizScreen(it, state.conn, vm) }
+        // A paused student sees no question at all, not a dimmed quiz.
+        // A finished student never sees the quiz again, even when paused.
+        is Screen.Quiz -> when {
+            state.lock.finished -> FinishedScreen()
+            state.lock.paused -> PausedScreen(state.lock, vm)
+            else -> state.quiz?.let { QuizScreen(it, state.conn, vm) }
+        }
+        // Step 5: submitted. Nothing to change and nowhere to go back to.
+        is Screen.Finished -> FinishedScreen()
         // No score and no answers: the server is authoritative and says nothing yet.
         Screen.Ended -> EndedScreen(vm)
     }

@@ -33,6 +33,24 @@ object Protocol {
     private fun envelope(type: String, data: JSONObject): String =
         JSONObject().put("t", type).put("d", data).toString()
 
+    /**
+     * Step 3: the student left the app, so the server may pause them.
+     * "background" (activity stopped), "window" (window focus lost) and
+     * "unpinned" (lock task mode ended) are the only reasons in the protocol.
+     */
+    fun focusLost(reason: String): String {
+        val d = JSONObject().put("reason", reason)
+        return envelope("focus_lost", d)
+    }
+
+    fun focusGained(): String = envelope("focus_gained", JSONObject())
+
+    /** A request only: it never resumes anything by itself. */
+    fun resumeRequest(): String = envelope("resume_request", JSONObject())
+
+    /** Step 5: the student submits; no further answers are accepted from them. */
+    fun finish(): String = envelope("finish", JSONObject())
+
     /** Decoded server -> phone messages. */
     sealed interface ServerMessage {
         data class Joined(val studentId: String, val deviceToken: String?) : ServerMessage
@@ -42,6 +60,13 @@ object Protocol {
         data class AnswersState(val answers: Map<String, Any?>) : ServerMessage
         data class Ack(val qid: String, val seq: Long) : ServerMessage
         data class QuizEnd(val reason: String) : ServerMessage
+        /** Step 3: only the instructor can resume, via resumed. */
+        data class Paused(val reason: String) : ServerMessage
+        data object Resumed : ServerMessage
+        /** The instructor toggled lock during the quiz. */
+        data class Lock(val on: Boolean) : ServerMessage
+        /** Step 5: confirmation; also sent after a rejoin if already finished. */
+        data object Finished : ServerMessage
         data class Unknown(val type: String) : ServerMessage
     }
 
@@ -64,6 +89,10 @@ object Protocol {
                 ServerMessage.Ack(d.optString("qid"), d.optLong("seq"))
             }
             "quiz_end" -> ServerMessage.QuizEnd(root.optJSONObject("d")?.optString("reason").orEmpty())
+            "paused" -> ServerMessage.Paused(root.optJSONObject("d")?.optString("reason").orEmpty())
+            "resumed" -> ServerMessage.Resumed
+            "lock" -> ServerMessage.Lock(root.optJSONObject("d")?.optBoolean("on", false) ?: false)
+            "finished" -> ServerMessage.Finished
             else -> ServerMessage.Unknown(type)
         }
     }
@@ -83,6 +112,9 @@ object Protocol {
             questions = questions,
             endsAt = data.optLong("endsAt"),
             serverTime = data.optLong("serverTime"),
+            // Absent means off: locking is opt-in and must never surprise a
+            // student whose server predates step 3.
+            lockMode = data.optBoolean("lockMode", false),
         )
     }
 
@@ -159,6 +191,8 @@ private fun parseItems(array: org.json.JSONArray?, textKey: String): List<com.st
         "QUIZ_ENDED" -> "The quiz has ended."
         "BAD_ANSWER" -> "The instructor's computer could not accept that answer."
         "UNKNOWN_QUESTION" -> "That question is not part of this quiz."
+        "PAUSED" -> "You are paused. The answer is kept and sent when you resume."
+        "FINISHED" -> "You already finished the quiz."
         else -> "Could not join: $code"
     }
 }

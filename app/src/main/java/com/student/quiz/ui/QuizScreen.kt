@@ -1,7 +1,10 @@
 package com.student.quiz.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,15 +13,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
@@ -28,8 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.student.quiz.data.FinishFlow
 import com.student.quiz.data.Question
 import com.student.quiz.data.QuizClock
+import com.student.quiz.data.QuizNav
 import com.student.quiz.net.ConnState
 import kotlinx.coroutines.delay
 
@@ -62,34 +74,132 @@ fun QuizScreen(quiz: QuizUiState, conn: ConnState?, vm: AppViewModel, modifier: 
         }
     }
     val remaining = QuizClock.remainingMs(quiz.endsAt, now, quiz.offsetMs)
+    val state by vm.ui.collectAsState()
 
-    Column(modifier = modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        CountdownBar(remaining)
-        QuizChips(quiz, vm)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarPaddingOnly()
+            .navigationBarPaddingOnly(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp),
+        ) {
+            CountdownBar(remaining)
+            QuizChips(quiz, vm)
 
-        if (question == null) {
-            Text("This quiz has no questions.", style = MaterialTheme.typography.bodyLarge)
-        } else {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    "Question ${quiz.currentIndex + 1} of ${quiz.questions.size}",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Text(question.body, style = MaterialTheme.typography.titleMedium)
-                QuestionInput(question, quiz, vm)
-                SaveIndicator(question, quiz, vm)
-                Spacer(Modifier.height(8.dp))
+            if (question == null) {
+                Text("This quiz has no questions.", style = MaterialTheme.typography.bodyLarge)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "Question ${quiz.currentIndex + 1} of ${quiz.questions.size}",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(question.body, style = MaterialTheme.typography.titleMedium)
+                    QuestionInput(question, quiz, vm)
+                    SaveIndicator(question, quiz, vm)
+                    Spacer(Modifier.height(8.dp))
+                }
             }
+
+            NavRow(quiz, question, vm)
+            Spacer(Modifier.height(12.dp))
+            FinishState(vm)
         }
 
-        NavRow(quiz, question, vm)
-        Spacer(Modifier.height(12.dp))
+        state.finishDialog?.let { unanswered ->
+            FinishDialog(unanswered, vm)
+        }
+    }
+}
+
+@Composable
+private fun FinishState(vm: AppViewModel) {
+    val state by vm.ui.collectAsState()
+    // Step 5: the unacked queue must be empty before finish goes out, so
+    // while it drains the student waits here.
+    if (state.savingAnswers) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator()
+            Text("Saving your answers...")
+        }
+    }
+    state.saveError?.let { error ->
+        Text(
+            error,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun FinishDialog(unanswered: Int, vm: AppViewModel) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.4f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            ) {
+                vm.closeFinishDialog()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                ) {},
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    FinishFlow.dialogText(unanswered),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (FinishFlow.showUnansweredOffer(unanswered)) {
+                        TextButton(onClick = vm::showUnanswered) {
+                            Text("Show unanswered")
+                        }
+                    }
+                    TextButton(onClick = vm::closeFinishDialog) {
+                        Text("Cancel")
+                    }
+                    TextButton(onClick = vm::confirmFinish) {
+                        Text("Finish")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -126,46 +236,70 @@ private fun QuizChips(quiz: QuizUiState, vm: AppViewModel) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         quiz.questions.forEachIndexed { index, question ->
-            val answered = quiz.isAnswered(question)
-            FilterChip(
-                selected = index == quiz.currentIndex,
-                onClick = {
-                    quiz.current?.let(vm::onLeaveQuestion)
-                    vm.selectQuestion(index)
-                },
-                label = {
-                    // A bold chip number means the question has an answer.
-                    Text(
-                        "${index + 1}",
-                        fontWeight = if (answered) FontWeight.Bold else FontWeight.Normal,
-                    )
-                },
-            )
+            // The current question is also marked, so the three answer states
+            // stay independent of where the student is.
+            val here = if (index == quiz.currentIndex) "$CURRENT_MARKER" else ""
+            when (quiz.chipState(question)) {
+                // Answered: filled.
+                QuizNav.ChipState.ANSWERED -> FilterChip(
+                    selected = true,
+                    onClick = { vm.selectQuestion(index) },
+                    label = { Text("$here${index + 1}") },
+                )
+                // Seen but unanswered: outlined with a marker.
+                QuizNav.ChipState.VISITED -> FilterChip(
+                    selected = false,
+                    onClick = { vm.selectQuestion(index) },
+                    label = { Text("$here$VISITED_MARKER${index + 1}") },
+                )
+                // Not reached yet: plain.
+                QuizNav.ChipState.UNVISITED -> FilterChip(
+                    selected = false,
+                    onClick = { vm.selectQuestion(index) },
+                    label = { Text("$here${index + 1}") },
+                )
+            }
         }
     }
 }
 
+/** Chip markers: the question on screen, and a seen-but-unanswered question. */
+private const val CURRENT_MARKER = "\u25B6 "
+private const val VISITED_MARKER = "\u2022 "
+
 @Composable
 private fun NavRow(quiz: QuizUiState, question: Question?, vm: AppViewModel) {
+    val count = quiz.questions.size
+    // None of these depend on whether the current question is answered.
+    val last = QuizNav.isLast(count, quiz.currentIndex)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(
-            onClick = {
-                question?.let(vm::onLeaveQuestion)
-                vm.previousQuestion()
-            },
-            enabled = quiz.currentIndex > 0,
+            onClick = { vm.previousQuestion() },
+            enabled = question != null && QuizNav.canGoPrevious(quiz.currentIndex),
             modifier = Modifier.weight(1f),
         ) { Text("Previous") }
-        Button(
-            onClick = {
-                question?.let(vm::onLeaveQuestion)
-                vm.nextQuestion()
-            },
-            enabled = question != null && quiz.currentIndex < quiz.questions.lastIndex,
-            modifier = Modifier.weight(1f),
-        ) { Text("Next") }
+        if (last) {
+            // Last question: finish goes through its confirmation dialog.
+            Button(
+                onClick = { vm.openFinishDialog() },
+                enabled = question != null,
+                modifier = Modifier.weight(1f),
+            ) { Text("Finish") }
+        } else {
+            Button(
+                onClick = { vm.nextQuestion() },
+                enabled = question != null && QuizNav.canGoNext(count, quiz.currentIndex),
+                modifier = Modifier.weight(1f),
+            ) { Text("Next") }
+            // Skipping sends nothing: only a pending debounced answer is flushed.
+            OutlinedButton(
+                onClick = { vm.skipQuestion() },
+                modifier = Modifier.weight(1f),
+            ) { Text("Skip") }
+        }
     }
 }

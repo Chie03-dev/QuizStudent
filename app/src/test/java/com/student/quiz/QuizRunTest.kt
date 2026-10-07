@@ -93,6 +93,21 @@ class QuizStartParseTest {
     }
 
     @Test
+    fun `matching items missing text keep their id so the screen is never blank`() {
+        // docs/protocol.md says left/right items are {id,text}. A payload with
+        // no "text" must not erase the items or leave the dropdowns empty.
+        val q = parse(
+            """{"qid":"m3","type":"matching","body":"Match","points":3,
+               "left":[{"id":"l1"},{"id":"l2","text":"dog"}],
+               "right":[{"id":"r1"}]}""",
+        ).single() as Question.Matching
+        assertEquals(listOf("l1", "l2"), q.left.map { it.id })
+        assertEquals("", q.left[0].text)
+        assertEquals("dog", q.left[1].text)
+        assertEquals(listOf("r1"), q.right.map { it.id })
+    }
+
+    @Test
     fun `parses connect with prompts and answers including decoys`() {
         val q = parse(
             """{"qid":"c1","type":"connect","body":"Connect","points":3,

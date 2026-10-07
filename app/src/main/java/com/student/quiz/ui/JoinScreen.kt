@@ -34,6 +34,7 @@ fun JoinScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .systemBarPadding()
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),

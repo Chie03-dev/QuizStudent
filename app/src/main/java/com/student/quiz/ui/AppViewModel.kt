@@ -7,9 +7,15 @@ import androidx.lifecycle.viewModelScope
 import com.student.quiz.data.AnswerCodec
 import com.student.quiz.data.AnswerQueue
 import com.student.quiz.data.AnswerValue
+import com.student.quiz.data.FinishFlow
 import com.student.quiz.data.KeyValueStore
+import com.student.quiz.data.LockCommand
+import com.student.quiz.data.LockController
+import com.student.quiz.data.LockEvent
+import com.student.quiz.data.LockState
 import com.student.quiz.data.Question
 import com.student.quiz.data.QuizClock
+import com.student.quiz.data.QuizNav
 import com.student.quiz.data.QuizStart
 import com.student.quiz.data.SeqCounter
 import com.student.quiz.data.StudentStore
@@ -20,8 +26,11 @@ import com.student.quiz.net.QrPayload
 import com.student.quiz.net.ServiceDiscovery
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -31,6 +40,8 @@ sealed interface Screen {
     data object Scan : Screen
     data class Lobby(val name: String) : Screen
     data class Quiz(val name: String) : Screen
+    /** Step 5: submitted. No answers can be changed after this. */
+    data class Finished(val name: String) : Screen
     data object Ended : Screen
 }
 
@@ -47,9 +58,21 @@ data class QuizUiState(
     val unacked: Set<String> = emptySet(),
     /** qids the server rejected with BAD_ANSWER. */
     val failed: Set<String> = emptySet(),
+    /** qids the student has been on at least once, whether or not they answered. */
+    val visited: Set<String> = emptySet(),
 ) {
     val current: Question? get() = questions.getOrNull(currentIndex)
     fun isAnswered(question: Question): Boolean = AnswerCodec.isAnswered(question, answers[question.qid])
+
+    /** Chip state for a question: answered, seen but unanswered, or unseen. */
+    fun chipState(question: Question): QuizNav.ChipState =
+        QuizNav.chipState(question, isAnswered(question), question.qid in visited)
+
+    /** Index of the first question with no answer, or null when all are answered. */
+    fun firstUnansweredIndex(): Int? = QuizNav.firstUnanswered(questions, answers)
+
+    /** How many questions still have no answer. */
+    fun unansweredCount(): Int = FinishFlow.unansweredCount(questions, answers)
 }
 
 data class JoinUiState(
@@ -64,6 +87,24 @@ data class JoinUiState(
     val showManualEntry: Boolean = false,
     val conn: ConnState? = null,
     val quiz: QuizUiState? = null,
+    /** Step 5: the finish confirmation dialog (null when closed). */
+    val finishDialog: Int? = null,
+    /** Step 5: waiting for the unacked queue to drain before sending finish. */
+    val savingAnswers: Boolean = false,
+    /** Step 5: shown when the queue did not drain within 10 s. */
+    val saveError: String? = null,
+    /** Step 3: pin state for the quiz screen and the paused screen. */
+    val lock: LockState = LockState(
+        running = false,
+        lockMode = false,
+        pinned = false,
+        paused = false,
+        pausedReason = null,
+        hasFocus = true,
+        stopped = false,
+        canResume = true,
+        needsPin = false,
+    ),
 )
 
 /** Drives step 1 (join a lobby) and step 2 (take part in a running quiz). */
@@ -94,6 +135,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** qid -> value waiting for its debounce timer to fire. */
     private val pendingSends = mutableMapOf<String, AnswerValue>()
+
+    // ---------- Step 3: lock and pause ----------
+
+    /**
+     * The decision logic is pure: it only says what to send and when to pin.
+     * MainActivity performs the Android side (startLockTask/stopLockTask,
+     * FLAG_SECURE) and reports lifecycle events back through [onLockEvent].
+     */
+    private val lock = LockController()
+
+    /** Pin and unpin requests for MainActivity. Focus messages stay here. */
+    private val _pinCommands = MutableSharedFlow<LockCommand>(extraBufferCapacity = 8)
+    val pinCommands: SharedFlow<LockCommand> = _pinCommands.asSharedFlow()
+
+    /** Runs the grace window after startLockTask; cancelled on any re-pin. */
+    private var graceJob: Job? = null
 
     /** The qid of the most recently sent answer, for BAD_ANSWER reporting. */
     private var lastSentQid: String? = null
@@ -220,9 +277,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         eventJob = viewModelScope.launch {
             conn.events.collect(::onServerMessage)
         }
-        // A fresh join means we may have been offline: resend unacked answers.
+        // A fresh join means we may have been offline: resend unacked answers,
+        // and retry a held finish on the new socket.
         rejoinJob = viewModelScope.launch {
-            conn.rejoins.collect { resendUnacked() }
+            conn.rejoins.collect {
+                resendUnacked()
+                if (_ui.value.savingAnswers) maybeSendFinish()
+            }
         }
     }
 
@@ -234,6 +295,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             is Protocol.ServerMessage.AnswersState -> onAnswersState(message.answers)
             is Protocol.ServerMessage.Ack -> onAck(message.qid, message.seq)
             is Protocol.ServerMessage.QuizEnd -> endQuiz()
+            is Protocol.ServerMessage.Paused -> onLockEvent(LockEvent.Paused(message.reason))
+            is Protocol.ServerMessage.Resumed -> {
+                onLockEvent(LockEvent.Resumed)
+                // Answers typed while paused are still queued with their seq.
+                resendUnacked()
+            }
+            is Protocol.ServerMessage.Lock -> onLockEvent(LockEvent.LockChanged(message.on))
+            is Protocol.ServerMessage.Finished -> onFinished()
             is Protocol.ServerMessage.Failure -> onQuizError(message.code)
             else -> Unit
         }
@@ -244,11 +313,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val offset = QuizClock.offsetMs(quiz.serverTime, phoneNow)
         _ui.update { state ->
             // On a reconnect quiz_start arrives again: rebuild the questions but
-            // keep whatever the student already entered.
+            // keep whatever the student already entered. A finished student
+            // stays on the finished screen (answers_state then finished follow).
+            val wasFinished = state.screen is Screen.Finished || state.lock.finished
             val keepIndex = state.quiz?.currentIndex
                 ?.coerceAtMost((quiz.questions.size - 1).coerceAtLeast(0)) ?: 0
             state.copy(
-                screen = Screen.Quiz(state.screen.name()),
+                screen = if (wasFinished) Screen.Finished(state.screen.name()) else Screen.Quiz(state.screen.name()),
                 quiz = QuizUiState(
                     title = quiz.title,
                     questions = quiz.questions,
@@ -257,10 +328,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     endsAt = quiz.endsAt,
                     answers = state.quiz?.answers.orEmpty(),
                     unacked = state.quiz?.unacked.orEmpty(),
+                    // Rejoining keeps what the student already saw.
+                    visited = state.quiz?.visited.orEmpty() +
+                        listOfNotNull(keepQuestionQid(state.quiz, keepIndex)),
                 ),
             )
         }
+        // Lock first: quiz_start carries lockMode, so the pin prompt goes up
+        // before anything can report a focus change. On a reconnect this is
+        // also where lockMode is refreshed from the server.
+        onLockEvent(LockEvent.QuizStarted(quiz.lockMode))
     }
+
+    /** The qid of the question a rebuilt quiz should mark as visited, if any. */
+    private fun keepQuestionQid(previous: QuizUiState?, index: Int): String? =
+        previous?.questions?.getOrNull(index)?.qid
 
     /** Fills in answers the server already has; never overwrites local input. */
     private fun onAnswersState(raw: Map<String, Any?>) {
@@ -287,6 +369,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ),
             )
         }
+        // Finish waits for an empty queue: an ack may be the last one.
+        if (_ui.value.savingAnswers) maybeSendFinish()
     }
 
     private fun onQuizError(code: String) {
@@ -302,6 +386,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             "UNKNOWN_QUESTION" -> Log.w(TAG, "Server rejected a question id")
+            // PAUSED is not a failure: the answer was not stored, so it stays
+            // queued and goes out again after resumed (see resendUnacked).
+            "PAUSED" -> Log.i(TAG, "Answer held: the student is paused")
+            // FINISHED answers one of our own answers: the student finished on
+            // another path (or rejoined finished), so show the done screen.
+            "FINISHED" -> {
+                Log.i(TAG, "Answer rejected: already finished")
+                onFinished()
+            }
         }
     }
 
@@ -312,13 +405,147 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         debounceJobs.values.forEach { it.cancel() }
         debounceJobs.clear()
         pendingSends.clear()
-        _ui.update { it.copy(screen = Screen.Ended, quiz = null) }
+        finishJob?.cancel()
+        finishJob = null
+        // Releases the pin and clears FLAG_SECURE via the emitted StopPin.
+        onLockEvent(LockEvent.QuizEnded)
+        _ui.update { it.copy(screen = Screen.Ended, quiz = null, finishDialog = null, savingAnswers = false, saveError = null) }
+    }
+
+    // ---------- Step 5: finish ----------
+
+    /** The finish job: waits for the queue to drain, then gives up after 10 s. */
+    private var finishJob: Job? = null
+
+    /** When the current drain wait started (epoch ms). */
+    private var finishWaitStartMs: Long = 0L
+
+    /** Opens the confirmation dialog with the current unanswered count. */
+    fun openFinishDialog() {
+        val quiz = _ui.value.quiz ?: return
+        if (_ui.value.screen !is Screen.Quiz) return
+        if (_ui.value.lock.finished) return
+        // Flush anything still on the debounce timer so N is exact and every
+        // typed answer is queued before the drain wait starts.
+        flushPendingSends()
+        val count = _ui.value.quiz?.unansweredCount() ?: quiz.unansweredCount()
+        _ui.update { it.copy(finishDialog = count, saveError = null) }
+    }
+
+    fun closeFinishDialog() {
+        _ui.update { it.copy(finishDialog = null) }
+    }
+
+    /**
+     * From the dialog: jump to the first unanswered question. This replaces
+     * the old Done behavior, which no longer exists.
+     */
+    fun showUnanswered() {
+        val target = _ui.value.quiz?.firstUnansweredIndex() ?: return
+        _ui.update { it.copy(finishDialog = null) }
+        goTo(target)
+    }
+
+    /**
+     * From the dialog: send finish, but only once the unacked queue is empty
+     * (answers_state ordering and the 10 s give-up are handled by [maybeSendFinish]
+     * and the timeout below).
+     */
+    fun confirmFinish() {
+        if (_ui.value.screen !is Screen.Quiz) return
+        if (_ui.value.lock.finished) return
+        if (_ui.value.lock.paused) {
+            _ui.update { it.copy(saveError = "You are paused. Ask to resume, then finish.") }
+            return
+        }
+        flushPendingSends()
+        resendUnacked()
+        finishWaitStartMs = System.currentTimeMillis()
+        _ui.update { it.copy(finishDialog = null, savingAnswers = true, saveError = null) }
+        finishJob?.cancel()
+        finishJob = viewModelScope.launch {
+            delay(FinishFlow.SAVE_TIMEOUT_MS)
+            // Still waiting: the queue never drained, so stop and say so.
+            if (_ui.value.savingAnswers && !queueIsDrained()) {
+                _ui.update {
+                    it.copy(
+                        savingAnswers = false,
+                        saveError = "Still saving your answers. Check the connection and try again.",
+                    )
+                }
+            }
+        }
+        maybeSendFinish()
+    }
+
+    /** Sends finish now if the queue is empty; called on confirm and on ack. */
+    private fun maybeSendFinish() {
+        if (!_ui.value.savingAnswers) return
+        if (_ui.value.lock.finished) {
+            finishJob?.cancel()
+            finishJob = null
+            _ui.update { it.copy(savingAnswers = false) }
+            return
+        }
+        if (FinishFlow.timedOut(finishWaitStartMs, System.currentTimeMillis()) && !queueIsDrained()) {
+            finishJob?.cancel()
+            finishJob = null
+            _ui.update {
+                it.copy(
+                    savingAnswers = false,
+                    saveError = "Still saving your answers. Check the connection and try again.",
+                )
+            }
+            return
+        }
+        if (!queueIsDrained()) return
+        if (connection?.sendMessage(Protocol.finish()) != true) {
+            // No socket: keep waiting for the timeout; the ack path retries.
+            Log.i(TAG, "Finish held: no socket")
+            return
+        }
+        finishJob?.cancel()
+        finishJob = null
+        // The server confirms with finished; the screen switches there.
+        _ui.update { it.copy(savingAnswers = false) }
+    }
+
+    private fun queueIsDrained(): Boolean = FinishFlow.isDrained(queue.unackedQids())
+
+    /** Full-screen "You're done": no answers can be changed after this. */
+    private fun onFinished() {
+        debounceJobs.values.forEach { it.cancel() }
+        debounceJobs.clear()
+        pendingSends.clear()
+        finishJob?.cancel()
+        finishJob = null
+        // Releases the pin via StopPin; running stays true so FLAG_SECURE holds.
+        onLockEvent(LockEvent.Finished)
+        _ui.update {
+            it.copy(
+                screen = Screen.Finished(it.screen.name()),
+                finishDialog = null,
+                savingAnswers = false,
+                saveError = null,
+            )
+        }
+    }
+
+    /** Flushes every debounced answer into the queue without clearing any. */
+    private fun flushPendingSends() {
+        debounceJobs.values.forEach { it.cancel() }
+        debounceJobs.clear()
+        pendingSends.toMap().forEach { (qid, value) -> sendNow(qid, value) }
+        pendingSends.clear()
     }
 
     // ---------- Answering ----------
 
     /** Called on every input change: sends now, or after ~500 ms of quiet. */
     fun onAnswer(question: Question, value: AnswerValue, immediate: Boolean = false) {
+        // Step 5: no answers can be changed after finish.
+        if (!FinishFlow.canSendAnswer(_ui.value.lock.finished)) return
+        if (_ui.value.screen is Screen.Finished) return
         val qid = question.qid
         _ui.update { state ->
             val quiz = state.quiz ?: return@update state
@@ -341,6 +568,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Called when the student leaves a question, so nothing is left unsent. */
     fun onLeaveQuestion(question: Question) {
+        if (_ui.value.lock.finished) return
+        if (_ui.value.screen is Screen.Finished) return
         val qid = question.qid
         debounceJobs.remove(qid)?.cancel()
         val pending = pendingSends.remove(qid)
@@ -356,6 +585,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** "Not saved, tap to retry" on a question the server rejected. */
     fun retry(question: Question) {
+        if (_ui.value.lock.finished) return
+        if (_ui.value.screen is Screen.Finished) return
         _ui.update { state ->
             val quiz = state.quiz ?: return@update state
             state.copy(quiz = quiz.copy(failed = quiz.failed - question.qid))
@@ -364,12 +595,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun sendNow(qid: String, value: AnswerValue) {
+        // Step 5: a finished student never sends answers.
+        if (_ui.value.lock.finished) return
+        if (_ui.value.screen is Screen.Finished) return
         val number = seq.next()
         lastSentQid = qid
         queue.add(qid, number, value)
         _ui.update { state ->
             val quiz = state.quiz ?: return@update state
             state.copy(quiz = quiz.copy(unacked = queue.unackedQids()))
+        }
+        // While paused nothing is sent: the entry stays queued with its seq and
+        // goes out after resumed (resendUnacked), so no seq is ever wasted.
+        if (_ui.value.lock.paused) {
+            Log.i(TAG, "Answer for $qid held: the student is paused")
+            return
         }
         val json = Protocol.answer(qid, AnswerCodec.toJson(value), number)
         if (connection?.sendAnswer(json) != true) {
@@ -378,49 +618,173 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Resends the latest unacked value per question after a reconnect. */
+    /**
+     * Resends the latest unacked value per question after a reconnect or after
+     * resumed. Reusing the original seq is safe: the protocol says an answer
+     * with seq <= the last one seen is ignored but still acked.
+     */
     private fun resendUnacked() {
+        if (_ui.value.lock.paused) return
         queue.pendingPerQuestion().forEach { entry ->
             val json = Protocol.answer(entry.qid, AnswerCodec.toJson(entry.value), entry.seq)
             connection?.sendAnswer(json)
         }
     }
 
-    // ---------- Navigation ----------
+    // ---------- Step 3: lock and pause ----------
 
-    fun selectQuestion(index: Int) {
-        _ui.update { state ->
-            val quiz = state.quiz ?: return@update state
-            if (index !in quiz.questions.indices) return@update state
-            state.copy(quiz = quiz.copy(currentIndex = index))
+    /**
+     * The one entry point for everything that changes lock or pause state.
+     * MainActivity feeds lifecycle and pin state in; it only carries out the
+     * StartPin / StopPin commands, everything else is sent from here.
+     */
+    fun onLockEvent(event: LockEvent) {
+        val commands = lock.on(event)
+        _ui.update { it.copy(lock = lock.state()) }
+        commands.forEach(::carryOut)
+    }
+
+    private fun carryOut(command: LockCommand) {
+        when (command) {
+            is LockCommand.FocusLost -> sendQuietly(Protocol.focusLost(command.reason))
+            LockCommand.FocusGained -> sendQuietly(Protocol.focusGained())
+            // MainActivity owns the Android side of pinning.
+            LockCommand.StartPin -> {
+                _pinCommands.tryEmit(command)
+                startGraceWindow()
+            }
+            LockCommand.StopPin -> {
+                graceJob?.cancel()
+                graceJob = null
+                _pinCommands.tryEmit(command)
+            }
         }
     }
 
-    fun nextQuestion() {
+    /**
+     * The pin confirmation prompt (and permission dialogs) take the window
+     * focus away for a moment. Nothing is reported until the grace window is
+     * over, so the prompt itself never pauses the student.
+     */
+    private fun startGraceWindow() {
+        graceJob?.cancel()
+        graceJob = viewModelScope.launch {
+            delay(LockController.GRACE_MS)
+            onLockEvent(LockEvent.GraceElapsed)
+        }
+    }
+
+    /**
+     * Focus messages are informational: the server only logs them, so a
+     * dropped socket must not turn into an error on the student's screen.
+     */
+    private fun sendQuietly(json: String) {
+        if (connection?.sendMessage(json) != true) Log.i(TAG, "Focus message held: no socket")
+    }
+
+    /** MainActivity: onWindowFocusChanged(hasFocus). */
+    fun onWindowFocusChanged(hasFocus: Boolean) = onLockEvent(LockEvent.WindowFocus(hasFocus))
+
+    /** MainActivity: onStop / onPause. */
+    fun onStopped(stopped: Boolean) = onLockEvent(LockEvent.Stopped(stopped))
+
+    /** MainActivity: ActivityManager.getLockTaskModeState() != NONE. */
+    fun onPinState(pinned: Boolean) = onLockEvent(LockEvent.PinState(pinned))
+
+    /** MainActivity: while a permission dialog is showing. */
+    fun onPermissionDialog(open: Boolean) = onLockEvent(LockEvent.PermissionDialog(open))
+
+    /** The "Ask to resume" button. It requests only; the instructor decides. */
+    fun requestResume() {
+        val state = _ui.value.lock
+        // Enabled state already reflects this, but a stale tap must not send.
+        if (!state.paused || !state.canResume) return
+        sendQuietly(Protocol.resumeRequest())
+    }
+
+    /** The "Pin again" button on the paused screen. */
+    fun pinAgain() {
+        val state = _ui.value.lock
+        // Only meaningful while locked and no longer pinned: pinning without
+        // lock on would be theatre, and the controller refuses it too.
+        if (!state.paused || !state.needsPin) return
+        lock.requestPin().forEach(::carryOut)
+        _ui.update { it.copy(lock = lock.state()) }
+    }
+
+    /** True when the back button must be ignored: the quiz is pinned. */
+    fun blocksBackButton(): Boolean =
+        _ui.value.lock.running && _ui.value.lock.lockMode && _ui.value.lock.pinned
+
+    /** True while the quiz is running, whatever the pause state: FLAG_SECURE. */
+    fun quizRunning(): Boolean = _ui.value.lock.running
+
+    /** Leaves the quiz (kick, closed session, explicit back to join). */
+    fun leaveQuiz() = onLockEvent(LockEvent.QuizEnded)
+
+    // ---------- Navigation ----------
+
+    /**
+     * Moves to another question. Every question is reachable: this never looks
+     * at whether the current one is answered, so an unanswered question (a
+     * matching one included) can never block Next, Previous or the chips.
+     * Leaving only flushes a pending debounced answer; it never clears one.
+     */
+    private fun goTo(index: Int) {
+        val question = _ui.value.quiz?.current
+        question?.let(::onLeaveQuestion)
         _ui.update { state ->
             val quiz = state.quiz ?: return@update state
-            val last = (quiz.questions.size - 1).coerceAtLeast(0)
-            state.copy(quiz = quiz.copy(currentIndex = (quiz.currentIndex + 1).coerceAtMost(last)))
+            val target = index.coerceIn(0, (quiz.questions.size - 1).coerceAtLeast(0))
+            state.copy(
+                quiz = quiz.copy(
+                    currentIndex = target,
+                    visited = quiz.visited + listOfNotNull(quiz.questions.getOrNull(target)?.qid),
+                ),
+            )
         }
+    }
+
+    /** Jumps to a question from its chip. */
+    fun selectQuestion(index: Int) = goTo(index)
+
+    fun nextQuestion() {
+        val quiz = _ui.value.quiz ?: return
+        if (!QuizNav.canGoNext(quiz.questions.size, quiz.currentIndex)) return
+        goTo(QuizNav.nextIndex(quiz.questions.size, quiz.currentIndex))
     }
 
     fun previousQuestion() {
-        _ui.update { state ->
-            val quiz = state.quiz ?: return@update state
-            state.copy(quiz = quiz.copy(currentIndex = (quiz.currentIndex - 1).coerceAtLeast(0)))
-        }
+        val quiz = _ui.value.quiz ?: return
+        if (!QuizNav.canGoPrevious(quiz.currentIndex)) return
+        goTo(QuizNav.previousIndex(quiz.questions.size, quiz.currentIndex))
+    }
+
+    /**
+     * Skip: move on without answering. Only a pending debounced answer is
+     * flushed, so an answer already given is kept and never re-sent as empty.
+     * On the last question Skip does nothing: finishing goes through the
+     * Finish button and its confirmation dialog.
+     */
+    fun skipQuestion() {
+        val quiz = _ui.value.quiz ?: return
+        if (QuizNav.isLast(quiz.questions.size, quiz.currentIndex)) return
+        nextQuestion()
     }
 
     /** The student's name, whichever screen we are on. */
     private fun Screen.name(): String = when (this) {
         is Screen.Lobby -> name
         is Screen.Quiz -> name
+        is Screen.Finished -> name
         else -> _ui.value.name
     }
 
     /** Kick or a rejected join: show the message back on the Join screen. */
     fun backToJoin(message: String? = null) {
         teardownConnection()
+        // A kick or a closed session leaves the quiz: release the pin.
+        leaveQuiz()
         _ui.update {
             it.copy(
                 screen = Screen.Join,
@@ -445,6 +809,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         discovery.stop()
+        // Never leave the phone pinned after the ViewModel goes away.
+        leaveQuiz()
         teardownConnection()
         super.onCleared()
     }

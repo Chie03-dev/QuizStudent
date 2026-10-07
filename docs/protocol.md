@@ -142,3 +142,47 @@ Common fields: { qid, type, body, points }
 - Joining while running: only a known deviceToken can rejoin; anyone else gets CLOSED.
 - Dropped connections do NOT pause the quiz yet (step 3 adds pause/lock). The phone just reconnects and resends unacked answers.
 - Instructor commands (start, end) are IPC-only, never WebSocket.
+
+# Lock and pause (step 3)
+
+## Changes to existing messages
+- quiz_start d gains: lockMode (boolean)
+- error codes added: PAUSED
+
+## Phone -> Server
+- focus_lost    d: { reason: "background" | "window" | "unpinned" }
+- focus_gained  d: {}
+- resume_request d: {}   (a request only; it never resumes anything by itself)
+
+## Server -> Phone
+- paused  d: { reason: "focus" | "network" }
+- resumed d: {}
+- lock    d: { on: boolean }   (instructor toggled lock during the quiz)
+
+## Rules
+- A student is paused when (a) lockMode is on and the server receives focus_lost, or (b) the quiz is running and no heartbeat arrived for 10 s.
+- focus_lost while lockMode is off is ignored (but logged). focus_lost while already paused is logged but changes nothing.
+- While paused, an answer is rejected with error PAUSED and not stored. The phone keeps it queued and resends after resumed.
+- The quiz clock never stops for paused students.
+- Only the instructor can resume (IPC: approveResume(studentId), approveAllResume()). The server then sends resumed.
+- A student paused for "network" who rejoins with the same deviceToken during the quiz gets quiz_start, answers_state, then paused { reason: "network" }.
+- When the instructor turns lock off, students paused for "focus" are resumed automatically (server sends resumed). Network pauses are not.
+- Events (focus_lost, focus_gained, paused, resumed, resume_request, disconnect, reconnect) are logged in memory per student with a timestamp. Count of focus_lost is shown per student.
+- The server never trusts the phone to enforce anything. Lock is a deterrent plus visibility.
+
+# Finish (step 5)
+
+## Phone -> Server
+- finish  d: {}   (the student submits; no further answers are accepted from them)
+
+## Server -> Phone
+- finished d: {}   (confirmation; also sent after a rejoin if the student already finished)
+- error codes added: FINISHED (an answer arrived after finish)
+
+## Rules
+- finish is valid only while the quiz is running and the student is not paused. While paused the server replies PAUSED and does nothing. Finish is idempotent: a repeated finish gets another finished.
+- After finish, answer messages get FINISHED and are not stored or acked. The student's stored answers stay as they are.
+- A finished student is never paused: focus_lost and heartbeat timeouts are logged but do not pause them.
+- A finished student who rejoins with the same deviceToken during the quiz gets quiz_start, answers_state, then finished.
+- The quiz ends only on the timer or the instructor (quiz_end). When every connected student is finished the instructor sees a banner, but nothing ends automatically.
+- Instructor commands stay IPC-only.

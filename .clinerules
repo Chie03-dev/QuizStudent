@@ -7,3 +7,4 @@
 - The server uses ws:// (not wss://), so allow cleartext traffic to LAN addresses via a network security config.
 - Build only the current step. No extra features.
 - Keep code in small packages: net/, data/, ui/.
+- During a running quiz never use window-based UI (Dialog, AlertDialog, DropdownMenu, Popup, ModalBottomSheet). They steal window focus and cause a pause. Use in-composition UI only.

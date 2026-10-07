@@ -24,7 +24,7 @@ fun LobbyScreen(name: String, conn: ConnState?, vm: AppViewModel, modifier: Modi
     }
 
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().systemBarPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -50,7 +50,7 @@ fun LobbyScreen(name: String, conn: ConnState?, vm: AppViewModel, modifier: Modi
 @Composable
 fun EndedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().systemBarPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -60,5 +60,21 @@ fun EndedScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodyLarge,
         )
         TextButton(onClick = { vm.backToJoin() }) { Text("Leave") }
+    }
+}
+
+/**
+ * Step 5: full-screen done state. No answers can be changed after this; the
+ * pin is released but the quiz still counts as running so screenshots stay
+ * blocked.
+ */
+@Composable
+fun FinishedScreen(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxSize().systemBarPadding().padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("You're done. Wait for your instructor.", style = MaterialTheme.typography.headlineSmall)
     }
 }

@@ -32,7 +32,8 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.QuizStudent"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="false">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

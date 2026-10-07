@@ -76,6 +76,8 @@ data class QuizStart(
     val questions: List<Question>,
     val endsAt: Long,
     val serverTime: Long,
+    /** Step 3: while true the phone pins itself and reports focus changes. */
+    val lockMode: Boolean = false,
 )
 
 /**

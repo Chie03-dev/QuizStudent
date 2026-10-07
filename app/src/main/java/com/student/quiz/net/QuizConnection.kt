@@ -61,6 +61,13 @@ class QuizConnection(
     /** Sends an answer, or returns false if the socket is not open. */
     fun sendAnswer(json: String): Boolean = socket?.send(json) ?: false
 
+    /**
+     * Step 3 sends focus_lost, focus_gained and resume_request on the same
+     * socket. They go out even while the student is paused, which is the whole
+     * point: the server needs them to log and to decide who can resume.
+     */
+    fun sendMessage(json: String): Boolean = socket?.send(json) ?: false
+
     // Increments every time the socket joins again (reconnect or Wi-Fi recovery).
     // The quiz UI watches it to resend unacked answers.
     private val _rejoins = MutableStateFlow(0)
@@ -156,6 +163,12 @@ class QuizConnection(
 
         override fun onMessage(webSocket: WebSocket, text: String) {
             if (stopped) return
+            // Matching and connect carry the most per-item data, so a missing
+            // item field shows up as a blank screen. Log the raw question so
+            // the exact wire shape can be compared with docs/protocol.md.
+            if (text.contains("\"matching\"") || text.contains("\"connect\"")) {
+                Log.i(TAG, "RAW matching/connect question: $text")
+            }
             val message = runCatching { Protocol.parse(text) }.getOrNull()
             if (message == null) {
                 Log.w(TAG, "Unparseable message: $text")

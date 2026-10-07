@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -27,6 +25,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.student.quiz.data.AnswerCodec
 import com.student.quiz.data.AnswerValue
+import com.student.quiz.data.MatchingLogic
 import com.student.quiz.data.Question
 
 /** One input per question type. */
@@ -142,7 +141,7 @@ private fun ListInput(
     }
 }
 
-/** A dropdown per left item; sent as a map leftId -> rightId. */
+/** An inline expandable list per left item; sent as a map leftId -> rightId. */
 @Composable
 private fun MatchingInput(
     question: Question.Matching,
@@ -150,27 +149,59 @@ private fun MatchingInput(
     vm: AppViewModel,
 ) {
     val links = (value as? AnswerValue.Links)?.links.orEmpty()
+    var expandedLeftId by remember(question.qid) { mutableStateOf<String?>(null) }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         question.left.forEach { leftItem ->
-            val chosenText = question.right
-                .firstOrNull { it.id == links[leftItem.id] }?.text
-            var open by remember { mutableStateOf(false) }
-            Column {
-                Text(leftItem.text, style = MaterialTheme.typography.bodyLarge)
+            val chosenRightId = links[leftItem.id]
+            val chosenText = question.right.firstOrNull { it.id == chosenRightId }?.text
+            val isExpanded = expandedLeftId == leftItem.id
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 OutlinedButton(
-                    onClick = { open = true },
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                ) { Text(chosenText ?: "Choose…") }
-                DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                    question.right.forEach { rightItem ->
-                        DropdownMenuItem(
-                            text = { Text(rightItem.text) },
-                            onClick = {
-                                open = false
-                                val updated = links + (leftItem.id to rightItem.id)
-                                vm.onAnswer(question, AnswerValue.Links(updated), immediate = true)
-                            },
-                        )
+                    onClick = {
+                        expandedLeftId = if (isExpanded) null else leftItem.id
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "${leftItem.text.ifBlank { leftItem.id }}: ${chosenText?.ifBlank { "(no text)" } ?: "Choose…"}",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+
+                if (isExpanded) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, top = 2.dp, bottom = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        question.right.forEach { rightItem ->
+                            val otherOwnerId = MatchingLogic.holderOf(links, leftItem.id, rightItem.id)
+                            val isTaken = otherOwnerId != null
+                            val isSelected = chosenRightId == rightItem.id
+
+                            OutlinedButton(
+                                onClick = {
+                                    expandedLeftId = null
+                                    val updated = MatchingLogic.selectRight(links, leftItem.id, rightItem.id)
+                                    vm.onAnswer(question, AnswerValue.Links(updated), immediate = true)
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                val label = buildString {
+                                    append(rightItem.text.ifBlank { rightItem.id })
+                                    if (isTaken) {
+                                        append(" (Taken)")
+                                    }
+                                    if (isSelected) {
+                                        append(" ✓")
+                                    }
+                                }
+                                Text(label)
+                            }
+                        }
                     }
                 }
             }

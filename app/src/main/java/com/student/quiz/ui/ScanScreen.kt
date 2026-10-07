@@ -60,7 +60,7 @@ fun ScanScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier.fillMaxSize().systemBarPadding().padding(16.dp)) {
         Text("Point the camera at the lobby QR code", style = MaterialTheme.typography.titleMedium)
         Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp)) {
             AndroidView(
