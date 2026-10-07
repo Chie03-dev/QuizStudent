@@ -1,6 +1,6 @@
 # Quiz Student App (Android)
 
-An offline, LAN-only Android client for the Quiz system, built with Kotlin and Jetpack Compose.
+An offline, LAN-only Android client for the Quiz system, built with Kotlin and Jetpack Compose. This application is the student client child app for the main desktop application: [Quiz Desktop App](https://github.com/Chie03-dev/Quiz).
 
 ## Features
 - Local LAN connection over WebSocket to the instructor server.
