@@ -1,6 +1,5 @@
 package com.student.quiz.ui.theme
 
-import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -12,32 +11,65 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = IndigoPrimaryDark,
+    onPrimary = IndigoOnPrimaryDark,
+    primaryContainer = IndigoContainerDark,
+    onPrimaryContainer = IndigoOnContainerDark,
+    secondary = TealSecondaryDark,
+    onSecondary = TealOnSecondaryDark,
+    secondaryContainer = TealContainerDark,
+    onSecondaryContainer = TealOnContainerDark,
+    tertiary = AmberTertiaryDark,
+    onTertiary = AmberOnTertiaryDark,
+    tertiaryContainer = AmberContainerDark,
+    onTertiaryContainer = AmberOnContainerDark,
+    error = ErrorRedDark,
+    onError = ErrorOnRedDark,
+    errorContainer = ErrorContainerDark,
+    onErrorContainer = ErrorOnContainerDark,
+    background = DarkBackground,
+    onBackground = DarkOnBackground,
+    surface = DarkSurface,
+    onSurface = DarkOnSurface,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkOnSurfaceVariant,
+    outline = DarkOutline,
+    outlineVariant = DarkOutlineVariant,
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primary = IndigoPrimary,
+    onPrimary = IndigoOnPrimary,
+    primaryContainer = IndigoContainer,
+    onPrimaryContainer = IndigoOnContainer,
+    secondary = TealSecondary,
+    onSecondary = TealOnSecondary,
+    secondaryContainer = TealContainer,
+    onSecondaryContainer = TealOnContainer,
+    tertiary = AmberTertiary,
+    onTertiary = AmberOnTertiary,
+    tertiaryContainer = AmberContainer,
+    onTertiaryContainer = AmberOnContainer,
+    error = ErrorRed,
+    onError = ErrorOnRed,
+    errorContainer = ErrorContainer,
+    onErrorContainer = ErrorOnContainer,
+    background = LightBackground,
+    onBackground = LightOnBackground,
+    surface = LightSurface,
+    onSurface = LightOnSurface,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightOnSurfaceVariant,
+    outline = LightOutline,
+    outlineVariant = LightOutlineVariant,
 )
 
 @Composable
 fun QuizStudentTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Brand identity wins over Material You here so the quiz looks the same on
+    // every student's phone. Flip to true to follow the device wallpaper colors.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

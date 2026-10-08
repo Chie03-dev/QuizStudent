@@ -194,7 +194,9 @@ fun ConnectInput(question: Question.Connect, value: AnswerValue, vm: AppViewMode
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            // Wide enough for both columns' dots (11dp each side = 22dp) plus
+            // clearance, so opposing dots and their touch targets never collide.
+            horizontalArrangement = Arrangement.spacedBy(GUTTER),
             verticalAlignment = Alignment.Top,
         ) {
             ConnectColumn(
@@ -202,6 +204,7 @@ fun ConnectInput(question: Question.Connect, value: AnswerValue, vm: AppViewMode
                 used = lines.keys,
                 usedColor = lineColor,
                 onMeasured = { id, box -> boxes["p:$id"] = box },
+                facesRight = true,
                 modifier = Modifier.weight(1f),
             )
             ConnectColumn(
@@ -209,6 +212,7 @@ fun ConnectInput(question: Question.Connect, value: AnswerValue, vm: AppViewMode
                 used = lines.values.toSet(),
                 usedColor = lineColor,
                 onMeasured = { id, box -> boxes["a:$id"] = box },
+                facesRight = false,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -271,9 +275,10 @@ private fun ConnectColumn(
     used: Set<String>,
     usedColor: Color,
     onMeasured: (String, CardBox) -> Unit,
+    facesRight: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(CARD_GAP)) {
         items.forEach { (id, text) ->
             val isUsed = id in used
             Card(
@@ -317,7 +322,14 @@ private fun ConnectColumn(
                     // stretching the column.
                     maxLines = MAX_TEXT_LINES,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    // Extra padding on the dot's side so wrapped text never
+                    // runs under the dot drawn on the card edge.
+                    modifier = Modifier.padding(
+                        start = if (facesRight) 12.dp else TEXT_BEHIND_DOT,
+                        end = if (facesRight) TEXT_BEHIND_DOT else 12.dp,
+                        top = 12.dp,
+                        bottom = 12.dp,
+                    ),
                 )
             }
         }
@@ -346,5 +358,20 @@ private const val SLOP = 24f
 private val TOUCH_TARGET = 48.dp
 
 private val DOT_RADIUS = 11.dp
+
+/**
+ * Space between the two columns: both columns' dots sit on the facing edges
+ * (11dp each = 22dp), so the gutter needs to fit them plus clearance.
+ */
+private val GUTTER = 32.dp
+
+/** Vertical gap between cards; enough for the neighbouring dots' reach. */
+private val CARD_GAP = 14.dp
+
+/**
+ * Text padding on the side a dot is drawn on: DOT_RADIUS (11dp) plus room so
+ * wrapped text never touches the dot.
+ */
+private val TEXT_BEHIND_DOT = 16.dp
 
 private const val MAX_TEXT_LINES = 3

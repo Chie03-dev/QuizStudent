@@ -1,13 +1,18 @@
 package com.student.quiz.ui
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -17,7 +22,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -60,9 +67,22 @@ fun ScanScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier.fillMaxSize().systemBarPadding().padding(16.dp)) {
-        Text("Point the camera at the lobby QR code", style = MaterialTheme.typography.titleMedium)
-        Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = 12.dp)) {
+    Column(
+        modifier.fillMaxSize().systemBarPadding().padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Spacer(Modifier.height(8.dp))
+        AppHeader(
+            title = "Scan the QR code",
+            subtitle = "Point the camera at the lobby QR code shown by the instructor.",
+        )
+        Spacer(Modifier.height(8.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        ) {
+            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp))) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -105,7 +125,14 @@ fun ScanScreen(vm: AppViewModel, modifier: Modifier = Modifier) {
                     previewView
                 },
             )
+            }
         }
-        Button(onClick = vm::closeScanner, modifier = Modifier.fillMaxWidth()) { Text("Cancel") }
+        Spacer(Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = vm::closeScanner,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
+        ) { Text("Cancel") }
+        Spacer(Modifier.height(8.dp))
     }
 }

@@ -100,11 +100,23 @@ fun QuizScreen(quiz: QuizUiState, conn: ConnState?, vm: AppViewModel, modifier: 
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(
-                        "Question ${quiz.currentIndex + 1} of ${quiz.questions.size}",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(question.body, style = MaterialTheme.typography.titleMedium)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.large,
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "Question ${quiz.currentIndex + 1} of ${quiz.questions.size}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(question.body, style = MaterialTheme.typography.headlineSmall)
+                        }
+                    }
                     QuestionInput(question, quiz, vm)
                     SaveIndicator(question, quiz, vm)
                     Spacer(Modifier.height(8.dp))
@@ -206,27 +218,30 @@ private fun FinishDialog(unanswered: Int, vm: AppViewModel) {
 @Composable
 private fun CountdownBar(remaining: Long) {
     val over = remaining <= 0
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    // The timer lives in its own card so it reads as chrome, not content.
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        if (over) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                "Time's up",
-                style = MaterialTheme.typography.titleMedium,
+                if (over) "Time's up" else "Time left",
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.error,
+                color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        } else {
-            Spacer(Modifier.height(1.dp))
+            Text(
+                QuizClock.format(remaining),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            )
         }
-        Text(
-            QuizClock.format(remaining),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-        )
     }
 }
 @Composable
@@ -280,6 +295,7 @@ private fun NavRow(quiz: QuizUiState, question: Question?, vm: AppViewModel) {
         OutlinedButton(
             onClick = { vm.previousQuestion() },
             enabled = question != null && QuizNav.canGoPrevious(quiz.currentIndex),
+            shape = MaterialTheme.shapes.medium,
             modifier = Modifier.weight(1f),
         ) { Text("Previous") }
         if (last) {
@@ -287,17 +303,20 @@ private fun NavRow(quiz: QuizUiState, question: Question?, vm: AppViewModel) {
             Button(
                 onClick = { vm.openFinishDialog() },
                 enabled = question != null,
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.weight(1f),
             ) { Text("Finish") }
         } else {
             Button(
                 onClick = { vm.nextQuestion() },
                 enabled = question != null && QuizNav.canGoNext(count, quiz.currentIndex),
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.weight(1f),
             ) { Text("Next") }
             // Skipping sends nothing: only a pending debounced answer is flushed.
             OutlinedButton(
                 onClick = { vm.skipQuestion() },
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.weight(1f),
             ) { Text("Skip") }
         }

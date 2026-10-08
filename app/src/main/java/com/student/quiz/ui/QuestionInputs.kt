@@ -58,6 +58,7 @@ private fun AnswerTextField(
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
+        shape = MaterialTheme.shapes.medium,
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -96,8 +97,11 @@ private fun TfInput(question: Question.Tf, value: AnswerValue, vm: AppViewModel)
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         listOf(true to "True", false to "False").forEach { (flag, label) ->
             val onClick = { vm.onAnswer(question, AnswerValue.Flag(flag), immediate = true) }
-            if (selected == flag) Button(onClick = onClick) { Text(label) }
-            else OutlinedButton(onClick = onClick) { Text(label) }
+            if (selected == flag) {
+                Button(onClick = onClick, shape = MaterialTheme.shapes.medium, modifier = Modifier.weight(1f)) { Text(label) }
+            } else {
+                OutlinedButton(onClick = onClick, shape = MaterialTheme.shapes.medium, modifier = Modifier.weight(1f)) { Text(label) }
+            }
         }
     }
 }
