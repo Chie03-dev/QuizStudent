@@ -679,7 +679,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * dropped socket must not turn into an error on the student's screen.
      */
     private fun sendQuietly(json: String) {
-        if (connection?.sendMessage(json) != true) Log.i(TAG, "Focus message held: no socket")
+        val ok = connection?.sendMessage(json) == true
+        if (!ok) Log.i(TAG, "Focus message held: no socket")
     }
 
     /** MainActivity: onWindowFocusChanged(hasFocus). */

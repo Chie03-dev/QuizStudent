@@ -92,6 +92,18 @@ class LockPauseTest {
     }
 
     @Test
+    fun `lock off still releases the pin while paused for focus`() {
+        pinnedQuiz()
+        lock.on(LockEvent.Paused("focus"))
+        assertTrue(lock.state().paused)
+        // The instructor's toggle resumes focus-paused students server side;
+        // on the phone the pin must come down whether or not it is paused.
+        assertEquals(listOf(LockCommand.StopPin), lock.on(LockEvent.LockChanged(on = false)))
+        assertFalse(lock.state().pinned)
+        assertFalse(lock.state().lockMode)
+    }
+
+    @Test
     fun `the focus messages match the protocol shapes`() {
         assertEquals(
             "{\"t\":\"focus_lost\",\"d\":{\"reason\":\"unpinned\"}}",

@@ -74,8 +74,22 @@ class LockController {
         // here and only reset for a brand-new quiz handled by the ViewModel.
         reportedLost = false
         stopped = false
+        if (!lockMode) {
+            // quiz_start carries the CURRENT lockMode, so a replay after a
+            // reconnect must not turn the lock back on. A lock { on: false }
+            // missed while disconnected still has to release the pin and any
+            // pending pin request from before the drop.
+            pinRequested = false
+            inGrace = false
+            return if (pinned) {
+                pinned = false
+                listOf(LockCommand.StopPin)
+            } else {
+                emptyList()
+            }
+        }
         // A reconnect mid-quiz reuses the same pin: never ask twice.
-        return if (lockMode && !pinned && !pinRequested) requestPin() else emptyList()
+        return if (!pinned && !pinRequested) requestPin() else emptyList()
     }
 
     private fun onLockChanged(on: Boolean): List<LockCommand> {
@@ -89,12 +103,12 @@ class LockController {
         // Turning lock off is what resumes focus-paused students, so the phone
         // stops tracking focus from here on.
         reportedLost = false
-        return if (pinned) {
-            pinned = false
-            listOf(LockCommand.StopPin)
-        } else {
-            emptyList()
-        }
+        // The pin state is only polled about once a second, so `pinned` may
+        // not reflect a pin requested moments ago. Turning lock off must
+        // always release the screen, whatever this controller believes,
+        // or the student stays stuck on a pinned screen.
+        pinned = false
+        return listOf(LockCommand.StopPin)
     }
 
     private fun onWindowFocus(changed: Boolean): List<LockCommand> {
@@ -148,8 +162,11 @@ class LockController {
         reportedLost = false
         pausedReason = null
         finished = false
-        if (!pinned) return emptyList()
         pinned = false
+        // Same rule as lock { on: false }: the pin state is only polled about
+        // once a second, so a pin requested moments ago may not be reflected
+        // yet. Ending the quiz must always release the screen, whatever this
+        // controller believes, or the student stays stuck on a pinned screen.
         return listOf(LockCommand.StopPin)
     }
 
@@ -163,14 +180,16 @@ class LockController {
         pausedReason = null
         pinRequested = false
         inGrace = false
-        if (!pinned) return emptyList()
         pinned = false
+        // Same as onQuizEnded: always release the pin, whatever the poll says.
         return listOf(LockCommand.StopPin)
     }
 
     /** The "Pin again" button on the paused screen. */
     fun requestPin(): List<LockCommand> {
-        if (!running || !lockMode) return emptyList()
+        // A finished student is never pinned again (running stays true for
+        // FLAG_SECURE, so the finished flag has to be checked as well).
+        if (!running || !lockMode || finished) return emptyList()
         pinRequested = true
         inGrace = true
         return listOf(LockCommand.StartPin)

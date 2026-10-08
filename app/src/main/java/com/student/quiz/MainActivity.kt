@@ -43,6 +43,8 @@ import com.student.quiz.ui.QuizScreen
 import com.student.quiz.ui.Screen
 import com.student.quiz.ui.ScanScreen
 import com.student.quiz.ui.theme.QuizStudentTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -69,6 +71,29 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The pin poll is the only source of truth for real lock task mode, and
+        // there is no callback for the student leaving screen pinning, so it has
+        // to run the whole time the quiz runs. onResume alone is not enough:
+        // students sit in the lobby (already resumed) when the instructor starts,
+        // and quiz_start arrives over the socket without another onResume. So
+        // drive the poll off the running flag, not off the lifecycle.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.ui
+                    .map { it.lock.running }
+                    .distinctUntilChanged()
+                    .collect { running ->
+                        handler.removeCallbacks(pinPoll)
+                        if (running) {
+                            // Read once now: a pin just requested (grace window
+                            // still open) must not be read as an unpin yet, which
+                            // reportPinState already guards for via the grace flag.
+                            reportPinState()
+                            handler.postDelayed(pinPoll, PIN_POLL_MS)
+                        }
+                    }
+            }
+        }
         // FLAG_SECURE itself is applied and removed by QuizApp, which knows
         // when the quiz starts and ends.
         lifecycleScope.launch {
@@ -79,14 +104,28 @@ class MainActivity : ComponentActivity() {
                     // Only pin commands reach this flow; focus messages are
                     // sent by the ViewModel itself.
                     when (command) {
+                        // The collector runs on the main dispatcher
+                        // (lifecycleScope), so both calls happen on the main
+                        // thread. The real lock task state is only polled
+                        // about once a second, so check it right here before
+                        // calling: the controller's commands may race the
+                        // poll, and stopLockTask() throws when the activity
+                        // is not in lock task mode.
                         LockCommand.StartPin -> runCatching {
-                            startLockTask()
+                            if (lockTaskModeState() == ActivityManager.LOCK_TASK_MODE_NONE) {
+                                startLockTask()
+                            }
                             pinned = true
-                        }.onFailure { Log.w(TAG, "startLockTask failed: ${it.message}") }
-                        LockCommand.StopPin -> {
-                            runCatching { stopLockTask() }
-                                .onFailure { Log.w(TAG, "stopLockTask failed: ${it.message}") }
+                        }.onFailure {
+                            Log.w(TAG, "startLockTask failed: ${it.message}")
+                        }
+                        LockCommand.StopPin -> runCatching {
+                            if (lockTaskModeState() != ActivityManager.LOCK_TASK_MODE_NONE) {
+                                stopLockTask()
+                            }
                             pinned = false
+                        }.onFailure {
+                            Log.w(TAG, "stopLockTask failed: ${it.message}")
                         }
                         else -> Unit
                     }
@@ -134,16 +173,21 @@ class MainActivity : ComponentActivity() {
         handler.removeCallbacks(pinPoll)
     }
 
-    /** Reads the real lock task mode and hands it to the controller. */
+    /**
+     * Reads the real lock task mode and hands it to the controller.
+     */
     private fun reportPinState() {
         if (!viewModel.quizRunning()) return
-        val state = getSystemService(ActivityManager::class.java)
-            ?.lockTaskModeState ?: ActivityManager.LOCK_TASK_MODE_NONE
+        val state = lockTaskModeState()
         val nowPinned = state != ActivityManager.LOCK_TASK_MODE_NONE
         if (nowPinned != pinned && !nowPinned) Log.i(TAG, "Screen pinning ended")
         pinned = nowPinned
         viewModel.onPinState(nowPinned)
     }
+
+    private fun lockTaskModeState(): Int =
+        getSystemService(ActivityManager::class.java)?.lockTaskModeState
+            ?: ActivityManager.LOCK_TASK_MODE_NONE
 
     private companion object {
         const val TAG = "MainActivity"
