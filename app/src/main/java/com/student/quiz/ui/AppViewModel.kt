@@ -52,6 +52,7 @@ data class QuizUiState(
     val currentIndex: Int = 0,
     val offsetMs: Long = 0,
     val endsAt: Long = 0,
+    val paused: Boolean = false,
     /** Local answer per qid, including answers not yet acked. */
     val answers: Map<String, AnswerValue> = emptyMap(),
     /** qids whose latest answer is still waiting for an ack. */
@@ -240,17 +241,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Last resort: type the instructor's address by hand. */
     fun joinManually() {
         val state = _ui.value
-        val ip = state.ip.trim()
-        val port = state.port.toIntOrNull()
+        var rawIp = state.ip.trim()
+        if (rawIp.contains("://")) {
+            rawIp = rawIp.substringAfter("://")
+        }
+        var cleanIp = rawIp
+        var manualPort = state.port.toIntOrNull()
+        if (rawIp.contains(':') && !rawIp.startsWith('[')) {
+            val parts = rawIp.split(':')
+            cleanIp = parts[0]
+            val parsedPort = parts.getOrNull(1)?.toIntOrNull()
+            if (parsedPort != null && parsedPort in 1..65535) {
+                manualPort = parsedPort
+            }
+        }
+        val port = manualPort
         when {
             state.name.isBlank() -> _ui.update { it.copy(error = "Enter your name first.") }
-            ip.isEmpty() -> _ui.update { it.copy(error = "Enter the instructor's IP address.") }
+            cleanIp.isEmpty() -> _ui.update { it.copy(error = "Enter the instructor's IP address.") }
             port == null || port !in 1..65535 ->
                 _ui.update { it.copy(error = "Enter a valid port, e.g. 8080.") }
             state.pin.length != 4 -> _ui.update { it.copy(error = "The PIN is 4 digits.") }
             else -> {
-                _ui.update { it.copy(status = "Joining $ip:$port…") }
-                connect(ip, port, state.pin)
+                _ui.update { it.copy(status = "Joining $cleanIp:$port…") }
+                connect(cleanIp, port, state.pin)
             }
         }
     }
@@ -302,6 +316,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 resendUnacked()
             }
             is Protocol.ServerMessage.Lock -> onLockEvent(LockEvent.LockChanged(message.on))
+            is Protocol.ServerMessage.TimeUpdate -> onTimeUpdate(message.endsAt, message.serverTime, message.paused)
             is Protocol.ServerMessage.Finished -> onFinished()
             is Protocol.ServerMessage.Failure -> onQuizError(message.code)
             else -> Unit
@@ -326,6 +341,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     currentIndex = keepIndex,
                     offsetMs = offset,
                     endsAt = quiz.endsAt,
+                    paused = quiz.paused,
                     answers = state.quiz?.answers.orEmpty(),
                     unacked = state.quiz?.unacked.orEmpty(),
                     // Rejoining keeps what the student already saw.
@@ -338,6 +354,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // before anything can report a focus change. On a reconnect this is
         // also where lockMode is refreshed from the server.
         onLockEvent(LockEvent.QuizStarted(quiz.lockMode))
+    }
+
+    private fun onTimeUpdate(endsAt: Long, serverTime: Long, paused: Boolean) {
+        val phoneNow = System.currentTimeMillis()
+        val offset = QuizClock.offsetMs(serverTime, phoneNow)
+        _ui.update { state ->
+            val quiz = state.quiz ?: return@update state
+            state.copy(
+                quiz = quiz.copy(
+                    endsAt = endsAt,
+                    offsetMs = offset,
+                    paused = paused,
+                ),
+            )
+        }
     }
 
     /** The qid of the question a rebuilt quiz should mark as visited, if any. */

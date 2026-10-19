@@ -65,6 +65,8 @@ object Protocol {
         data object Resumed : ServerMessage
         /** The instructor toggled lock during the quiz. */
         data class Lock(val on: Boolean) : ServerMessage
+        /** Timer control: the instructor paused, resumed, or shifted the countdown. */
+        data class TimeUpdate(val endsAt: Long, val serverTime: Long, val paused: Boolean) : ServerMessage
         /** Step 5: confirmation; also sent after a rejoin if already finished. */
         data object Finished : ServerMessage
         data class Unknown(val type: String) : ServerMessage
@@ -92,6 +94,14 @@ object Protocol {
             "paused" -> ServerMessage.Paused(root.optJSONObject("d")?.optString("reason").orEmpty())
             "resumed" -> ServerMessage.Resumed
             "lock" -> ServerMessage.Lock(root.optJSONObject("d")?.optBoolean("on", false) ?: false)
+            "time_update" -> {
+                val d = root.optJSONObject("d") ?: JSONObject()
+                ServerMessage.TimeUpdate(
+                    endsAt = d.optLong("endsAt"),
+                    serverTime = d.optLong("serverTime"),
+                    paused = d.optBoolean("paused", false),
+                )
+            }
             "finished" -> ServerMessage.Finished
             else -> ServerMessage.Unknown(type)
         }
@@ -115,6 +125,7 @@ object Protocol {
             // Absent means off: locking is opt-in and must never surprise a
             // student whose server predates step 3.
             lockMode = data.optBoolean("lockMode", false),
+            paused = data.optBoolean("paused", false),
         )
     }
 

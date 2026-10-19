@@ -16,5 +16,5 @@ An offline, LAN-only Android client for the Quiz system, built with Kotlin and J
 - CameraX and ML Kit barcode scanner
 
 ## Requirements
-- Android 8.0 (API level 26) or higher.
+- Android 14.0 (API level 34) or higher.
 - Local network connection to the quiz instructor server.

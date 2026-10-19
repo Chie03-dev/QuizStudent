@@ -78,6 +78,8 @@ data class QuizStart(
     val serverTime: Long,
     /** Step 3: while true the phone pins itself and reports focus changes. */
     val lockMode: Boolean = false,
+    /** Timer control: while true the countdown is frozen. */
+    val paused: Boolean = false,
 )
 
 /**

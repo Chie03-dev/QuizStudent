@@ -39,21 +39,25 @@ Source of truth: `src/main/server/mdns.ts`.
   advertisement rather than assuming 8080.
 - TXT records: exactly one, `pin=<PIN>` (for example `pin=5719`). No other TXT
   data is published.
-- Address: a standard A/AAAA record for the host, resolved by the phone.
+- Address: a single A record for the SRV target `quiz-<PIN>.local`, set to the
+  instructor-selected IPv4 (`selectedIp` — the same address as the QR code).
+  Other NICs (VPN, WSL, …) are not advertised. IPv6 is not advertised. Switching
+  the address in the UI re-publishes so PIN discovery stays on the chosen NIC.
 
-Published records for PIN 5719 on port 8080:
+Published records for PIN 5719 on port 8080 at 192.168.0.235:
 
 ```
 PTR  _quiz._tcp.local                      -> quiz-5719._quiz._tcp.local
-SRV  quiz-5719._quiz._tcp.local            -> port 8080
+SRV  quiz-5719._quiz._tcp.local            -> port 8080, target quiz-5719.local
 TXT  quiz-5719._quiz._tcp.local            -> pin=5719
-A/AAAA quiz-5719._quiz._tcp.local          -> host address
+A    quiz-5719.local                       -> 192.168.0.235
 ```
 
 Advertisements are re-published on every New session, with the new PIN in both
-the instance name and the TXT record. The previous advertisement is destroyed
-(not just stopped) first so the instance name is released immediately,
-otherwise rapid new sessions collide with "Service name is already in use".
+the instance name and the TXT record, and whenever the instructor picks another
+LAN address. The previous advertisement is destroyed (not just stopped) first so
+the instance name is released immediately, otherwise rapid new sessions collide
+with "Service name is already in use".
 
 PINs are always 4 characters, zero-padded (`generatePin()` in
 `src/main/server/session.ts`), so an instance may be named `quiz-0423`.
@@ -129,7 +133,9 @@ Common fields: { qid, type, body, points }
 - answer  d: { qid, value, seq }   (seq increases for every answer the phone sends; persisted on the phone)
 
 ## Server -> Phone
-- quiz_start    d: { quizId, title, questions: [...], endsAt, serverTime }   (epoch ms)
+- quiz_start    d: { quizId, title, questions: [...], endsAt, serverTime, lockMode, paused }   (epoch ms)
+  - lockMode: true => focus_lost pauses this student (step 3).
+  - paused: true => the countdown is frozen (timer control, see "Timer control").
 - answers_state d: { answers: { "<qid>": <value>, ... } }   (sent right after quiz_start when a known student rejoins mid-quiz)
 - ack           d: { qid, seq }
 - quiz_end      d: { reason: "time" | "instructor" }
@@ -146,7 +152,7 @@ Common fields: { qid, type, body, points }
 # Lock and pause (step 3)
 
 ## Changes to existing messages
-- quiz_start d gains: lockMode (boolean)
+- quiz_start d gains: lockMode (boolean)   (defined in step 2)
 - error codes added: PAUSED
 
 ## Phone -> Server
@@ -186,3 +192,35 @@ Common fields: { qid, type, body, points }
 - A finished student who rejoins with the same deviceToken during the quiz gets quiz_start, answers_state, then finished.
 - The quiz ends only on the timer or the instructor (quiz_end). When every connected student is finished the instructor sees a banner, but nothing ends automatically.
 - Instructor commands stay IPC-only.
+
+# Timer control
+
+While the quiz is running the instructor can pause/resume the countdown and
+add or subtract time. Commands are IPC-only, like start/end.
+
+## Server -> Phone
+- time_update d: { endsAt, serverTime, paused } (broadcast after every change)
+
+## Rules
+- The server clock stays authoritative: endsAt is always computed on the server.
+  The phone reuses the step-2 offset math against the new serverTime.
+- Pause freezes the countdown: endsAt stops moving and no timer fires while
+  paused. Resuming recomputes endsAt from the remaining time.
+- While the countdown is frozen, the server sends the *effective* deadline
+  (serverTime + remaining), not the stale endsAt, so the phone's offset math
+  yields a frozen remaining time instead of a shrinking clock.
+- Adding/subtracting a delta shifts endsAt by that many milliseconds, clamped so
+  at least 10 s remain and the quiz never ends from an adjustment alone. While
+  paused the delta changes the stored remaining time instead.
+- time_update is broadcast to every connected student after pause, resume and
+  adjust. A mid-quiz rejoin gets quiz_start as before, which already carries
+  the current endsAt; that payload also gains paused so the phone shows the
+  right state without waiting for the next update.
+- Naming: `quiz_start.d.paused` and `time_update.d.paused` mean the *countdown*
+  is frozen. They are unrelated to the per-student `paused` message of step 3,
+  which means *that student* is paused. A phone can be in both states at once
+  (the instructor froze the clock and the student lost focus).
+- `time_update` is informational: the phone never sends a timer command back.
+  Timer control is IPC-only, from the instructor's local UI.
+- A phone that does not know `time_update` must ignore it silently (unknown
+  message types are not errors) and keep running on its last known deadline.

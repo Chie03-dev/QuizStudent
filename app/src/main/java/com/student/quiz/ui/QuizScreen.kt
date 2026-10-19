@@ -64,13 +64,15 @@ fun QuizScreen(quiz: QuizUiState, conn: ConnState?, vm: AppViewModel, modifier: 
 
     // Ticking here drives the countdown; the server stays authoritative for time.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(quiz.endsAt) {
-        while (true) {
-            now = System.currentTimeMillis()
-            // Stop the ticker once the time is up: the server ends the quiz, and
-            // this screen waits for that message without recomposing.
-            if (QuizClock.remainingMs(quiz.endsAt, now, quiz.offsetMs) <= 0) break
-            delay(1000)
+    LaunchedEffect(quiz.endsAt, quiz.paused) {
+        if (!quiz.paused) {
+            while (true) {
+                now = System.currentTimeMillis()
+                // Stop the ticker once the time is up: the server ends the quiz, and
+                // this screen waits for that message without recomposing.
+                if (QuizClock.remainingMs(quiz.endsAt, now, quiz.offsetMs) <= 0) break
+                delay(1000)
+            }
         }
     }
     val remaining = QuizClock.remainingMs(quiz.endsAt, now, quiz.offsetMs)
@@ -87,7 +89,7 @@ fun QuizScreen(quiz: QuizUiState, conn: ConnState?, vm: AppViewModel, modifier: 
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
         ) {
-            CountdownBar(remaining)
+            CountdownBar(remaining, quiz.paused)
             QuizChips(quiz, vm)
 
             if (question == null) {
@@ -216,7 +218,7 @@ private fun FinishDialog(unanswered: Int, vm: AppViewModel) {
 }
 
 @Composable
-private fun CountdownBar(remaining: Long) {
+private fun CountdownBar(remaining: Long, paused: Boolean) {
     val over = remaining <= 0
     // The timer lives in its own card so it reads as chrome, not content.
     Card(
@@ -230,7 +232,11 @@ private fun CountdownBar(remaining: Long) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (over) "Time's up" else "Time left",
+                when {
+                    over -> "Time's up"
+                    paused -> "Time paused"
+                    else -> "Time left"
+                },
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,

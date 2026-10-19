@@ -146,4 +146,45 @@ class AnswerSerializationTest {
             ),
         )
     }
+
+    @Test
+    fun `quiz clock recompute handles pause, adjust, and resume`() {
+        val phoneNow = 10_000L
+        val serverTime = 10_000L
+
+        // Initial start: 60s remaining
+        val initial = QuizClock.recompute(serverTime, endsAt = 70_000L, paused = false, phoneNow)
+        assertEquals(60_000L, initial.remaining(phoneNow))
+        assertFalse(initial.paused)
+
+        // Paused time_update: frozen remainder preserved
+        val paused = QuizClock.recompute(serverTime = 20_000L, endsAt = 70_000L, paused = true, phoneNow = 20_000L)
+        assertTrue(paused.paused)
+        assertEquals(50_000L, paused.remaining(20_000L))
+
+        // Adjusted time_update (+1 min): shifted deadline
+        val adjusted = QuizClock.recompute(serverTime = 20_000L, endsAt = 130_000L, paused = true, phoneNow = 20_000L)
+        assertTrue(adjusted.paused)
+        assertEquals(110_000L, adjusted.remaining(20_000L))
+
+        // Resumed time_update: endsAt moves forward on resume, unpaused
+        val resumed = QuizClock.recompute(serverTime = 25_000L, endsAt = 135_000L, paused = false, phoneNow = 25_000L)
+        assertFalse(resumed.paused)
+        assertEquals(110_000L, resumed.remaining(25_000L))
+    }
+
+    @Test
+    fun `parses time_update and quiz_start paused flag`() {
+        val timeUpdate = Protocol.parse("""{"t":"time_update","d":{"endsAt":50000,"serverTime":20000,"paused":true}}""")
+            as Protocol.ServerMessage.TimeUpdate
+        assertEquals(50000L, timeUpdate.endsAt)
+        assertEquals(20000L, timeUpdate.serverTime)
+        assertTrue(timeUpdate.paused)
+
+        val quizStart = Protocol.parse(
+            """{"t":"quiz_start","d":{"quizId":"q1","title":"Test","endsAt":40000,
+               "serverTime":10000,"paused":true,"questions":[]}}""",
+        ) as Protocol.ServerMessage.QuizStartMessage
+        assertTrue(quizStart.quiz.paused)
+    }
 }
