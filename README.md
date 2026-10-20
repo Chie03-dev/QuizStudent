@@ -10,6 +10,7 @@ An offline, LAN-only Android client for the Quiz system, built with Kotlin and J
 - Robust state restoration and queue management.
 
 ## Tech Stack
+- I made the logo in Canva
 - Kotlin & Jetpack Compose (Material 3)
 - OkHttp WebSocket
 - NsdManager for local network discovery
