@@ -224,3 +224,50 @@ add or subtract time. Commands are IPC-only, like start/end.
   Timer control is IPC-only, from the instructor's local UI.
 - A phone that does not know `time_update` must ignore it silently (unknown
   message types are not errors) and keep running on its last known deadline.
+
+# Meme pop
+
+The instructor keeps a tray of images and can pop one full-screen onto the
+students' phones mid-quiz. The pop is an instructor command (IPC-only, like
+start/end); only the two messages below travel to the phone.
+
+## Server -> Phone
+- meme_pop  d: { memeId, path, mime, width, height, durationMs }
+- meme_hide  d: {}
+
+## Rules
+- path is a relative path on the same origin the phone already uses for
+  ws://<ip>:<port>/ws, e.g. "/memes/3f9c1a2b8d4e5f60.jpg". The phone resolves it against
+  http://<ip>:<port>. The server never sends an absolute URL, because the phone may have
+  joined on a different LAN address than the one the instructor has selected.
+- mime is image/jpeg or image/png. width/height are the pixel size of the served image.
+- durationMs is how long the phone shows it (3000 by default, 500..15000).
+- meme_pop is sent only to the sockets the instructor targeted. A pop to one student is
+  never seen by the others.
+- The meme is cosmetic. It does NOT pause the countdown, does NOT pause the student, and
+  does NOT produce focus_lost / focus_gained. The student stays connected and answerable
+  under the overlay; the clock keeps running, so the overlay costs the student quiz time.
+  (An instructor who wants to stop the clock freezes it themselves with the existing
+  timer control.)
+- A meme_pop while another meme is showing replaces it. meme_hide clears the overlay; a
+  phone that receives meme_hide with nothing showing does nothing.
+- The image is served as plain HTTP by the same Fastify server on the same port. No new
+  port and no new firewall rule (the existing rule covers 8080-8089).
+- A meme is a live, transient event: it goes to the sockets that are connected at that
+  moment and is NOT replayed on a rejoin (unlike quiz_start / answers_state). A phone that
+  reconnects mid-meme simply has no overlay; the instructor pops again if they want to.
+- A phone that does not know meme_pop / meme_hide ignores them silently (unknown message
+  types are not errors), so old phones keep working unchanged.
+
+## Phone-side notes (the overlay must be in the composition tree)
+- The overlay is drawn in the composition tree, above whatever screen is showing
+  (lobby / quiz / paused). It must NOT be a Dialog, AlertDialog, DropdownMenu, Popup,
+  ModalBottomSheet or a separate Activity: window-based UI during a quiz steals focus and
+  triggers focus_lost, which pauses the very student the meme is meant to scare.
+- The phone fetches path with OkHttp and decodes it with BitmapFactory.decodeByteArray.
+  No new dependency (Coil is not allowed) and no bundled asset.
+- The phone sends nothing back for a meme: no focus_lost, no focus_gained, no answer
+  rejection. A failing fetch or decode shows nothing and is only logged - the quiz must
+  not break.
+- Auto-hide after durationMs; meme_hide cancels the timer and clears the overlay; a new
+  meme_pop replaces the current overlay. Decoded bitmaps may be cached per memeId.
