@@ -67,6 +67,17 @@ object Protocol {
         data class Lock(val on: Boolean) : ServerMessage
         /** Timer control: the instructor paused, resumed, or shifted the countdown. */
         data class TimeUpdate(val endsAt: Long, val serverTime: Long, val paused: Boolean) : ServerMessage
+        /** Meme pop: display an image overlay on the student phone. */
+        data class MemePop(
+            val memeId: String,
+            val path: String,
+            val mime: String,
+            val width: Int,
+            val height: Int,
+            val durationMs: Long,
+        ) : ServerMessage
+        /** Meme hide: clear the image overlay. */
+        data object MemeHide : ServerMessage
         /** Step 5: confirmation; also sent after a rejoin if already finished. */
         data object Finished : ServerMessage
         data class Unknown(val type: String) : ServerMessage
@@ -102,6 +113,18 @@ object Protocol {
                     paused = d.optBoolean("paused", false),
                 )
             }
+            "meme_pop" -> {
+                val d = root.optJSONObject("d") ?: JSONObject()
+                ServerMessage.MemePop(
+                    memeId = d.optString("memeId"),
+                    path = d.optString("path"),
+                    mime = d.optString("mime"),
+                    width = d.optInt("width"),
+                    height = d.optInt("height"),
+                    durationMs = d.optLong("durationMs", 3000L),
+                )
+            }
+            "meme_hide" -> ServerMessage.MemeHide
             "finished" -> ServerMessage.Finished
             else -> ServerMessage.Unknown(type)
         }

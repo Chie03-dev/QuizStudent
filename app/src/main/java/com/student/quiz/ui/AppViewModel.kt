@@ -76,6 +76,12 @@ data class QuizUiState(
     fun unansweredCount(): Int = FinishFlow.unansweredCount(questions, answers)
 }
 
+data class MemeState(
+    val memeId: String,
+    val bitmap: android.graphics.Bitmap,
+    val durationMs: Long,
+)
+
 data class JoinUiState(
     val screen: Screen = Screen.Join,
     val name: String = "",
@@ -88,6 +94,7 @@ data class JoinUiState(
     val showManualEntry: Boolean = false,
     val conn: ConnState? = null,
     val quiz: QuizUiState? = null,
+    val meme: MemeState? = null,
     /** Step 5: the finish confirmation dialog (null when closed). */
     val finishDialog: Int? = null,
     /** Step 5: waiting for the unacked queue to drain before sending finish. */
@@ -301,6 +308,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val memeCache = mutableMapOf<String, android.graphics.Bitmap>()
+    private var memeHideJob: Job? = null
+
     // ---------- Step 2: the running quiz ----------
 
     private fun onServerMessage(message: Protocol.ServerMessage) {
@@ -317,9 +327,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             is Protocol.ServerMessage.Lock -> onLockEvent(LockEvent.LockChanged(message.on))
             is Protocol.ServerMessage.TimeUpdate -> onTimeUpdate(message.endsAt, message.serverTime, message.paused)
+            is Protocol.ServerMessage.MemePop -> onMemePop(
+                message.memeId, message.path, message.mime, message.width, message.height, message.durationMs
+            )
+            is Protocol.ServerMessage.MemeHide -> onMemeHide()
             is Protocol.ServerMessage.Finished -> onFinished()
             is Protocol.ServerMessage.Failure -> onQuizError(message.code)
             else -> Unit
+        }
+    }
+
+    private fun onMemePop(memeId: String, path: String, mime: String, width: Int, height: Int, durationMs: Long) {
+        memeHideJob?.cancel()
+        val cached = memeCache[memeId]
+        if (cached != null) {
+            _ui.update { it.copy(meme = MemeState(memeId, cached, durationMs)) }
+            scheduleMemeHide(durationMs)
+            return
+        }
+        viewModelScope.launch {
+            val conn = connection ?: return@launch
+            val bytes = conn.fetchBytes(path) ?: return@launch
+            val bitmap = runCatching {
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }.getOrElse {
+                Log.w(TAG, "Failed to decode meme bitmap for $memeId: ${it.message}")
+                null
+            } ?: return@launch
+            memeCache[memeId] = bitmap
+            _ui.update { it.copy(meme = MemeState(memeId, bitmap, durationMs)) }
+            scheduleMemeHide(durationMs)
+        }
+    }
+
+    private fun onMemeHide() {
+        memeHideJob?.cancel()
+        _ui.update { it.copy(meme = null) }
+    }
+
+    private fun scheduleMemeHide(durationMs: Long) {
+        memeHideJob = viewModelScope.launch {
+            delay(durationMs)
+            _ui.update { it.copy(meme = null) }
         }
     }
 

@@ -152,6 +152,21 @@ class QuizConnection(
         wifi.release()
     }
 
+    /** Fetches a meme image or resource over HTTP from the same server. */
+    suspend fun fetchBytes(path: String): ByteArray? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val ok = client ?: buildClient(wifi.currentNetwork).also { client = it }
+        val url = "http://$host:$port$path"
+        val request = Request.Builder().url(url).build()
+        runCatching {
+            ok.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.bytes() else null
+            }
+        }.getOrElse {
+            Log.w(TAG, "Failed to fetch meme from $url: ${it.message}")
+            null
+        }
+    }
+
     private inner class Listener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (stopped) return

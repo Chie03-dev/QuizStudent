@@ -187,4 +187,20 @@ class AnswerSerializationTest {
         ) as Protocol.ServerMessage.QuizStartMessage
         assertTrue(quizStart.quiz.paused)
     }
+
+    @Test
+    fun `parses meme_pop and meme_hide messages`() {
+        val pop = Protocol.parse(
+            """{"t":"meme_pop","d":{"memeId":"m1","path":"/memes/test.jpg","mime":"image/jpeg","width":800,"height":600,"durationMs":3000}}""",
+        ) as Protocol.ServerMessage.MemePop
+        assertEquals("m1", pop.memeId)
+        assertEquals("/memes/test.jpg", pop.path)
+        assertEquals("image/jpeg", pop.mime)
+        assertEquals(800, pop.width)
+        assertEquals(600, pop.height)
+        assertEquals(3000L, pop.durationMs)
+
+        val hide = Protocol.parse("""{"t":"meme_hide","d":{}}""")
+        assertTrue(hide is Protocol.ServerMessage.MemeHide)
+    }
 }

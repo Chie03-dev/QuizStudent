@@ -16,6 +16,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,7 +26,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -249,22 +256,40 @@ private fun QuizApp(vm: AppViewModel = viewModel()) {
         if (state.conn is ConnState.Rejected) vm.leaveQuiz()
     }
 
-    when (val screen = state.screen) {
-        is Screen.Join -> JoinScreen(state, vm, onScanClicked)
-        is Screen.Scan -> ScanScreen(vm)
-        is Screen.Lobby -> LobbyScreen(screen.name, state.conn, vm)
-        // quiz_start sets both together, so this is only a guard against a blank
-        // frame between the quiz ending and the screen switching.
-        // A paused student sees no question at all, not a dimmed quiz.
-        // A finished student never sees the quiz again, even when paused.
-        is Screen.Quiz -> when {
-            state.lock.finished -> FinishedScreen()
-            state.lock.paused -> PausedScreen(state.lock, vm)
-            else -> state.quiz?.let { QuizScreen(it, state.conn, vm) }
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (val screen = state.screen) {
+            is Screen.Join -> JoinScreen(state, vm, onScanClicked)
+            is Screen.Scan -> ScanScreen(vm)
+            is Screen.Lobby -> LobbyScreen(screen.name, state.conn, vm)
+            // quiz_start sets both together, so this is only a guard against a blank
+            // frame between the quiz ending and the screen switching.
+            // A paused student sees no question at all, not a dimmed quiz.
+            // A finished student never sees the quiz again, even when paused.
+            is Screen.Quiz -> when {
+                state.lock.finished -> FinishedScreen()
+                state.lock.paused -> PausedScreen(state.lock, vm)
+                else -> state.quiz?.let { QuizScreen(it, state.conn, vm) }
+            }
+            // Step 5: submitted. Nothing to change and nowhere to go back to.
+            is Screen.Finished -> FinishedScreen()
+            // No score and no answers: the server is authoritative and says nothing yet.
+            Screen.Ended -> EndedScreen(vm)
         }
-        // Step 5: submitted. Nothing to change and nowhere to go back to.
-        is Screen.Finished -> FinishedScreen()
-        // No score and no answers: the server is authoritative and says nothing yet.
-        Screen.Ended -> EndedScreen(vm)
+
+        state.meme?.let { meme ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    bitmap = meme.bitmap.asImageBitmap(),
+                    contentDescription = "Meme",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
     }
 }
