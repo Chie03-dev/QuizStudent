@@ -2,7 +2,6 @@ import Foundation
 import Combine
 #if canImport(UIKit)
 import UIKit
-#import SwiftUI
 #endif
 
 enum Screen: Equatable {
@@ -472,6 +471,11 @@ class AppViewModel: ObservableObject {
         NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             guard let self = self, self.lockState.running, !self.lockState.finished else { return }
             _ = self.connection?.send(json: Protocol.focusLost(reason: "window"))
+        }
+
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self, self.lockState.running, !self.lockState.finished else { return }
+            _ = self.connection?.send(json: Protocol.focusLost(reason: "background"))
         }
 
         NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
