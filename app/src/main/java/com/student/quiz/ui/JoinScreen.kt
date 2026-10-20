@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -50,16 +51,15 @@ fun JoinScreen(
             subtitle = "Scan the instructor's QR code, or type the 4-digit PIN.",
         )
 
-        Column(
+        InfoCard(
             modifier = Modifier.widthIn(max = 520.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedTextField(
                 value = state.name,
                 onValueChange = vm::onNameChange,
                 label = { Text("Your name") },
                 singleLine = true,
-                shape = MaterialTheme.shapes.medium,
+                shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -69,7 +69,7 @@ fun JoinScreen(
                 onValueChange = vm::onPinChange,
                 label = { Text("PIN") },
                 singleLine = true,
-                shape = MaterialTheme.shapes.medium,
+                shape = RoundedCornerShape(14.dp),
                 // Kept as a String so a PIN like 0042 keeps its zeros.
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.NumberPassword,
@@ -78,19 +78,21 @@ fun JoinScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            Spacer(Modifier.height(4.dp))
+
             Button(
                 onClick = onScanClicked,
                 enabled = state.name.isNotBlank(),
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Scan QR", style = MaterialTheme.typography.labelLarge) }
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text("Scan QR", style = MaterialTheme.typography.titleMedium) }
 
             Button(
                 onClick = vm::joinByPin,
                 enabled = state.name.isNotBlank() && state.pin.length == 4 && !state.busy,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (state.busy) "Joining…" else "Join with PIN", style = MaterialTheme.typography.labelLarge) }
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+            ) { Text(if (state.busy) "Joining…" else "Join with PIN", style = MaterialTheme.typography.titleMedium) }
         }
 
         if (state.busy) {
@@ -119,16 +121,15 @@ fun JoinScreen(
                 Text("or enter the address", style = MaterialTheme.typography.labelMedium)
                 HorizontalDivider(modifier = Modifier.weight(1f))
             }
-            Column(
+            InfoCard(
                 modifier = Modifier.widthIn(max = 520.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 OutlinedTextField(
                     value = state.ip,
                     onValueChange = vm::onIpChange,
                     label = { Text("Instructor's IP, e.g. 192.168.0.235") },
                     singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
+                    shape = RoundedCornerShape(14.dp),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Uri,
                         imeAction = ImeAction.Next,
@@ -140,22 +141,23 @@ fun JoinScreen(
                     onValueChange = vm::onPortChange,
                     label = { Text("Port, e.g. 8080") },
                     singleLine = true,
-                    shape = MaterialTheme.shapes.medium,
+                    shape = RoundedCornerShape(14.dp),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
                         imeAction = ImeAction.Done,
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedButton(
+                Spacer(Modifier.height(4.dp))
+                Button(
                     onClick = vm::joinManually,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Join with address") }
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) { Text("Join with address", style = MaterialTheme.typography.titleMedium) }
                 OutlinedButton(
                     onClick = { vm.showManualEntry(false) },
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
                 ) { Text("Try the PIN again") }
             }
         }
