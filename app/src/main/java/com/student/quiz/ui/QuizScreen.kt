@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,6 +21,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -87,10 +89,12 @@ fun QuizScreen(quiz: QuizUiState, conn: ConnState?, vm: AppViewModel, modifier: 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp)
+                .imePadding(),
         ) {
             CountdownBar(remaining, quiz.paused)
             QuizChips(quiz, vm)
+            QuizProgress(quiz)
 
             if (question == null) {
                 Text("This quiz has no questions.", style = MaterialTheme.typography.bodyLarge)
@@ -326,5 +330,37 @@ private fun NavRow(quiz: QuizUiState, question: Question?, vm: AppViewModel) {
                 modifier = Modifier.weight(1f),
             ) { Text("Skip") }
         }
+    }
+}
+
+@Composable
+private fun QuizProgress(quiz: QuizUiState) {
+    val answeredCount = quiz.questions.count { quiz.isAnswered(it) }
+    val total = quiz.questions.size
+    val progress = if (total > 0) answeredCount.toFloat() / total.toFloat() else 0f
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "Progress",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "$answeredCount of $total answered",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(6.dp),
+        )
     }
 }

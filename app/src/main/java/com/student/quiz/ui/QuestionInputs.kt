@@ -1,5 +1,6 @@
 package com.student.quiz.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -67,24 +70,52 @@ private fun AnswerTextField(
 @Composable
 private fun McqInput(question: Question.Mcq, value: AnswerValue, vm: AppViewModel) {
     val selected = textOf(value)
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         question.options.forEach { option ->
-            Row(
+            val isSelected = option.id == selected
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
                         vm.onAnswer(question, AnswerValue.Text(option.id), immediate = true)
-                    }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RadioButton(
-                    selected = option.id == selected,
-                    onClick = {
-                        vm.onAnswer(question, AnswerValue.Text(option.id), immediate = true)
                     },
-                )
-                Text(option.text, style = MaterialTheme.typography.bodyLarge)
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                ),
+                border = if (isSelected) {
+                    BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                } else {
+                    null
+                },
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = {
+                            vm.onAnswer(question, AnswerValue.Text(option.id), immediate = true)
+                        },
+                    )
+                    Text(
+                        option.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
             }
         }
     }
