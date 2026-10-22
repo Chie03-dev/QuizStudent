@@ -1,5 +1,13 @@
 package com.student.quiz.ui
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,8 +18,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -22,13 +32,21 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import java.io.ByteArrayOutputStream
 
 /** Step 1 entry point: name + scan QR or enter the 4-digit PIN. */
 @Composable
@@ -38,6 +56,50 @@ fun JoinScreen(
     onScanClicked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            runCatching {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val original = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+
+                if (original != null) {
+                    val maxDim = 200
+                    val width = original.width
+                    val height = original.height
+                    val ratio = width.toFloat() / height.toFloat()
+                    val newWidth: Int
+                    val newHeight: Int
+                    if (width > height) {
+                        newWidth = maxDim
+                        newHeight = (maxDim / ratio).toInt()
+                    } else {
+                        newHeight = maxDim
+                        newWidth = (maxDim * ratio).toInt()
+                    }
+                    val scaled = Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
+                    val outputStream = ByteArrayOutputStream()
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+                    val bytes = outputStream.toByteArray()
+                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    vm.updateProfileImage("data:image/jpeg;base64,$base64")
+                }
+            }
+        }
+    }
+
+    val decodedBitmap = remember(state.profileImageBase64) {
+        val b64 = state.profileImageBase64
+        if (b64 != null) {
+            runCatching {
+                val cleanB64 = b64.substringAfter("base64,")
+                val bytes = Base64.decode(cleanB64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            }.getOrNull()
+        } else null
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -53,22 +115,37 @@ fun JoinScreen(
             subtitle = "Scan the instructor's QR code, or type the 4-digit PIN.",
         )
 
-        Box(
-            modifier = Modifier
-                .clickable { vm.openAvatarMaker() }
-                .padding(4.dp),
-            contentAlignment = Alignment.Center,
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { imagePicker.launch("image/*") }
+                    .border(2.5.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                contentAlignment = Alignment.Center,
             ) {
-                AvatarView(spec = state.avatar, size = 80.dp)
-                Text(
-                    "Tap to customize avatar",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                if (decodedBitmap != null) {
+                    Image(
+                        bitmap = decodedBitmap.asImageBitmap(),
+                        contentDescription = "Profile Picture",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Text(
+                        text = state.name.take(2).uppercase().ifBlank { "📷" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            TextButton(onClick = { imagePicker.launch("image/*") }) {
+                Text(if (decodedBitmap != null) "Change profile picture" else "Upload profile picture")
             }
         }
 

@@ -271,3 +271,41 @@ start/end); only the two messages below travel to the phone.
   not break.
 - Auto-hide after durationMs; meme_hide cancels the timer and clears the overlay; a new
   meme_pop replaces the current overlay. Decoded bitmaps may be cached per memeId.
+
+# Results (score sheet)
+
+When a quiz ends, the instructor app scores the session and keeps the score
+sheet in its own database. Like the quiz library, this is instructor-local:
+**there is no new phone-facing message**, and no answer key, tolerance or
+score ever reaches a phone.
+
+## What happens
+- The run ends (timer or instructor). The main process takes the run's answers
+  and the library quiz and stores them as one result session: the questions
+  with their answer keys, the students with their names, and one answer row
+  per student and question.
+- The snapshot is taken at the end of the run. The run keeps only the latest
+  answer per student and question, so that is the final state of the quiz.
+- There is one result session per run. Saving again (manually, during the run)
+  replaces the previous snapshot of the same run.
+- The library quiz is the source of the answer keys, because it keeps every
+  accepted answer and the problem tolerance. When it is gone, the runtime quiz
+  of the run is used instead.
+
+## Grading
+- mcq: the chosen option id; true/false: the boolean.
+- identification: the accepted answers, ignoring case and surrounding spaces.
+- fill-in: blank by blank, each blank accepting any of its alternatives.
+- enumeration: the accepted items.
+- matching and connect: pair by pair.
+- problem: the answer, with the stored tolerance when the question has one.
+- Multi-part questions give partial credit: the points are split evenly over
+  the parts that are right. A question that was never answered is not graded.
+- Every mark can be changed by hand afterwards (points, correct/wrong, a note).
+  The phone never sees any of it.
+
+## Rules
+- Instructor commands stay IPC-only, like start/end. The results live in the
+  instructor's own database (`result_sessions`, `result_questions`,
+  `result_students`, `result_answers`) and are never sent over the socket.
+- A phone that learns nothing about the results keeps working unchanged.

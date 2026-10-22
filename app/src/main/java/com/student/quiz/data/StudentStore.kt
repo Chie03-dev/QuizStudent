@@ -28,15 +28,9 @@ class StudentStore(context: Context) {
         get() = prefs.getString(KEY_NAME, null)
         set(value) = prefs.edit().putString(KEY_NAME, value).apply()
 
-    var avatar: AvatarSpec
-        get() {
-            val jsonStr = prefs.getString(KEY_AVATAR, null)
-            val json = jsonStr?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
-            return AvatarSpec.fromJson(json) ?: AvatarSpec.default()
-        }
-        set(value) {
-            prefs.edit().putString(KEY_AVATAR, value.toJson().toString()).apply()
-        }
+    var profileImageBase64: String?
+        get() = prefs.getString(KEY_PROFILE_IMAGE, null)
+        set(value) = prefs.edit().putString(KEY_PROFILE_IMAGE, value).apply()
 
     /** Last session address, so the app can offer to rejoin after a restart. */
     var lastIp: String?
@@ -52,7 +46,7 @@ class StudentStore(context: Context) {
         private set(value) = prefs.edit().putString(KEY_LAST_PIN, value).apply()
 
     /** The answer seq counter; it only ever increases, across app restarts. */
-var answerSeq: Long
+    var answerSeq: Long
         get() = prefs.getLong(KEY_ANSWER_SEQ, 0L)
         set(value) = prefs.edit().putLong(KEY_ANSWER_SEQ, value).apply()
 
@@ -78,7 +72,7 @@ var answerSeq: Long
         const val KEY_TOKEN = "device_token"
         const val KEY_STUDENT_ID = "student_id"
         const val KEY_NAME = "name"
-        const val KEY_AVATAR = "avatar"
+        const val KEY_PROFILE_IMAGE = "profile_image_base64"
         const val KEY_LAST_IP = "last_ip"
         const val KEY_LAST_PORT = "last_port"
         const val KEY_LAST_PIN = "last_pin"
