@@ -47,6 +47,7 @@ fun BrandMark(modifier: Modifier = Modifier, size: Int = 56) {
         modifier = modifier.size(size.dp),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
+        border = androidx.compose.foundation.BorderStroke(2.5.dp, MaterialTheme.colorScheme.outline),
     ) {
         Box(contentAlignment = Alignment.Center) {
             Image(
@@ -75,6 +76,7 @@ fun AppHeader(
         Text(
             title,
             style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center,
         )
         subtitle?.let {
@@ -96,11 +98,12 @@ fun InfoCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        border = androidx.compose.foundation.BorderStroke(2.5.dp, MaterialTheme.colorScheme.outline),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
@@ -122,8 +125,9 @@ fun StatusPill(
 ) {
     Surface(
         modifier = modifier,
-        shape = CircleShape,
-        color = color.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(12.dp),
+        color = color.copy(alpha = 0.15f),
+        border = androidx.compose.foundation.BorderStroke(2.dp, color),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -139,6 +143,7 @@ fun StatusPill(
                 text,
                 style = MaterialTheme.typography.labelLarge,
                 color = color,
+                fontWeight = FontWeight.Bold,
             )
         }
     }

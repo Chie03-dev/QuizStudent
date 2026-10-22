@@ -1,5 +1,6 @@
 package com.student.quiz.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -108,8 +109,10 @@ fun QuizScreen(quiz: QuizUiState, conn: ConnState?, vm: AppViewModel, modifier: 
                 ) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.large,
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(2.5.dp, MaterialTheme.colorScheme.outline),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     ) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -227,7 +230,9 @@ private fun CountdownBar(remaining: Long, paused: Boolean) {
     // The timer lives in its own card so it reads as chrome, not content.
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(2.5.dp, MaterialTheme.colorScheme.outline),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(

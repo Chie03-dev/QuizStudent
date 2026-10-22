@@ -24,9 +24,9 @@ private val DarkColorScheme = darkColorScheme(
     tertiaryContainer = AmberContainerDark,
     onTertiaryContainer = AmberOnContainerDark,
     error = ErrorRedDark,
-    onError = ErrorOnRedDark,
+    onError = DarkBackground,
     errorContainer = ErrorContainerDark,
-    onErrorContainer = ErrorOnContainerDark,
+    onErrorContainer = DarkOnBackground,
     background = DarkBackground,
     onBackground = DarkOnBackground,
     surface = DarkSurface,
@@ -38,22 +38,22 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = IndigoPrimary,
-    onPrimary = IndigoOnPrimary,
-    primaryContainer = IndigoContainer,
-    onPrimaryContainer = IndigoOnContainer,
-    secondary = TealSecondary,
-    onSecondary = TealOnSecondary,
-    secondaryContainer = TealContainer,
-    onSecondaryContainer = TealOnContainer,
-    tertiary = AmberTertiary,
-    onTertiary = AmberOnTertiary,
-    tertiaryContainer = AmberContainer,
-    onTertiaryContainer = AmberOnContainer,
+    primary = LightOnBackground,
+    onPrimary = LightBackground,
+    primaryContainer = LightSurfaceVariant,
+    onPrimaryContainer = LightOnBackground,
+    secondary = LightOnBackground,
+    onSecondary = LightBackground,
+    secondaryContainer = LightSurfaceVariant,
+    onSecondaryContainer = LightOnBackground,
+    tertiary = LightOnBackground,
+    onTertiary = LightBackground,
+    tertiaryContainer = LightSurfaceVariant,
+    onTertiaryContainer = LightOnBackground,
     error = ErrorRed,
-    onError = ErrorOnRed,
+    onError = LightBackground,
     errorContainer = ErrorContainer,
-    onErrorContainer = ErrorOnContainer,
+    onErrorContainer = LightOnBackground,
     background = LightBackground,
     onBackground = LightOnBackground,
     surface = LightSurface,
@@ -67,8 +67,6 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun QuizStudentTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Brand identity wins over Material You here so the quiz looks the same on
-    // every student's phone. Flip to true to follow the device wallpaper colors.
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
