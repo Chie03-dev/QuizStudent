@@ -1,6 +1,8 @@
 package com.student.quiz.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,6 +52,25 @@ fun JoinScreen(
             title = "Join the quiz",
             subtitle = "Scan the instructor's QR code, or type the 4-digit PIN.",
         )
+
+        Box(
+            modifier = Modifier
+                .clickable { vm.openAvatarMaker() }
+                .padding(4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                AvatarView(spec = state.avatar, size = 80.dp)
+                Text(
+                    "Tap to customize avatar",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
 
         InfoCard(
             modifier = Modifier.widthIn(max = 520.dp),

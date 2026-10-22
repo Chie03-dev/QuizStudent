@@ -203,4 +203,33 @@ class AnswerSerializationTest {
         val hide = Protocol.parse("""{"t":"meme_hide","d":{}}""")
         assertTrue(hide is Protocol.ServerMessage.MemeHide)
     }
+
+    @Test
+    fun `avatar spec clamps out of bounds values and serializes`() {
+        val sanitized = com.student.quiz.data.AvatarSpec.sanitize(
+            seed = "",
+            hue = 500, // out of bounds (> 360)
+            face = 10, // out of bounds (> 6)
+            eyes = -1, // out of bounds (< 0)
+            mouth = 2,
+            accessory = 1,
+        )
+        assertTrue(sanitized.seed.isNotBlank())
+        assertEquals(360, sanitized.hue)
+        assertEquals(6, sanitized.face)
+        assertEquals(0, sanitized.eyes)
+        assertEquals(2, sanitized.mouth)
+        assertEquals(1, sanitized.accessory)
+
+        val json = sanitized.toJson()
+        val parsed = com.student.quiz.data.AvatarSpec.fromJson(json)
+        assertEquals(sanitized, parsed)
+
+        val envelope = org.json.JSONObject(Protocol.join("1234", "Alice", "token123", sanitized))
+        assertEquals("join", envelope.getString("t"))
+        assertEquals("1234", envelope.getJSONObject("d").getString("pin"))
+        assertEquals("Alice", envelope.getJSONObject("d").getString("name"))
+        assertEquals("token123", envelope.getJSONObject("d").getString("deviceToken"))
+        assertEquals(360, envelope.getJSONObject("d").getJSONObject("avatar").getInt("hue"))
+    }
 }

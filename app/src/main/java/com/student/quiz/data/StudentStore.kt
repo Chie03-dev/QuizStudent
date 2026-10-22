@@ -28,6 +28,16 @@ class StudentStore(context: Context) {
         get() = prefs.getString(KEY_NAME, null)
         set(value) = prefs.edit().putString(KEY_NAME, value).apply()
 
+    var avatar: AvatarSpec
+        get() {
+            val jsonStr = prefs.getString(KEY_AVATAR, null)
+            val json = jsonStr?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+            return AvatarSpec.fromJson(json) ?: AvatarSpec.default()
+        }
+        set(value) {
+            prefs.edit().putString(KEY_AVATAR, value.toJson().toString()).apply()
+        }
+
     /** Last session address, so the app can offer to rejoin after a restart. */
     var lastIp: String?
         get() = prefs.getString(KEY_LAST_IP, null)
@@ -68,6 +78,7 @@ var answerSeq: Long
         const val KEY_TOKEN = "device_token"
         const val KEY_STUDENT_ID = "student_id"
         const val KEY_NAME = "name"
+        const val KEY_AVATAR = "avatar"
         const val KEY_LAST_IP = "last_ip"
         const val KEY_LAST_PORT = "last_port"
         const val KEY_LAST_PIN = "last_pin"

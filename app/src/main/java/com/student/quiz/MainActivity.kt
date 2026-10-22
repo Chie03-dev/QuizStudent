@@ -257,23 +257,30 @@ private fun QuizApp(vm: AppViewModel = viewModel()) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        when (val screen = state.screen) {
-            is Screen.Join -> JoinScreen(state, vm, onScanClicked)
-            is Screen.Scan -> ScanScreen(vm)
-            is Screen.Lobby -> LobbyScreen(screen.name, state.conn, vm)
-            // quiz_start sets both together, so this is only a guard against a blank
-            // frame between the quiz ending and the screen switching.
-            // A paused student sees no question at all, not a dimmed quiz.
-            // A finished student never sees the quiz again, even when paused.
-            is Screen.Quiz -> when {
-                state.lock.finished -> FinishedScreen()
-                state.lock.paused -> PausedScreen(state.lock, vm)
-                else -> state.quiz?.let { QuizScreen(it, state.conn, vm) }
+        when {
+            state.showAvatarMaker -> com.student.quiz.ui.AvatarMakerScreen(
+                initialSpec = state.avatar,
+                onSave = vm::saveAvatar,
+                onCancel = vm::closeAvatarMaker,
+            )
+            else -> when (val screen = state.screen) {
+                is Screen.Join -> JoinScreen(state, vm, onScanClicked)
+                is Screen.Scan -> ScanScreen(vm)
+                is Screen.Lobby -> LobbyScreen(screen.name, state.conn, vm)
+                // quiz_start sets both together, so this is only a guard against a blank
+                // frame between the quiz ending and the screen switching.
+                // A paused student sees no question at all, not a dimmed quiz.
+                // A finished student never sees the quiz again, even when paused.
+                is Screen.Quiz -> when {
+                    state.lock.finished -> FinishedScreen()
+                    state.lock.paused -> PausedScreen(state.lock, vm)
+                    else -> state.quiz?.let { QuizScreen(it, state.conn, vm) }
+                }
+                // Step 5: submitted. Nothing to change and nowhere to go back to.
+                is Screen.Finished -> FinishedScreen()
+                // No score and no answers: the server is authoritative and says nothing yet.
+                Screen.Ended -> EndedScreen(vm)
             }
-            // Step 5: submitted. Nothing to change and nowhere to go back to.
-            is Screen.Finished -> FinishedScreen()
-            // No score and no answers: the server is authoritative and says nothing yet.
-            Screen.Ended -> EndedScreen(vm)
         }
 
         state.meme?.let { meme ->

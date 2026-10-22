@@ -171,7 +171,7 @@ class QuizConnection(
         override fun onOpen(webSocket: WebSocket, response: Response) {
             if (stopped) return
             // Same deviceToken on every join: the server restores the studentId.
-            webSocket.send(Protocol.join(pin, name, store.deviceToken))
+            webSocket.send(Protocol.join(pin, name, store.deviceToken, store.avatar))
             handler.removeCallbacks(heartbeat)
             handler.postDelayed(heartbeat, HEARTBEAT_MS)
         }
@@ -195,6 +195,7 @@ class QuizConnection(
                     _state.value = ConnState.Joined(name)
                     store.studentId = message.studentId
                     store.name = name
+                    message.avatar?.let { store.avatar = it }
                     store.rememberSession(host, port, pin)
                 }
                 is Protocol.ServerMessage.Failure -> {

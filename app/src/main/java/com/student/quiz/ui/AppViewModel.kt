@@ -92,6 +92,8 @@ data class JoinUiState(
     val status: String? = null,
     val error: String? = null,
     val showManualEntry: Boolean = false,
+    val showAvatarMaker: Boolean = false,
+    val avatar: com.student.quiz.data.AvatarSpec = com.student.quiz.data.AvatarSpec.default(),
     val conn: ConnState? = null,
     val quiz: QuizUiState? = null,
     val meme: MemeState? = null,
@@ -164,10 +166,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var lastSentQid: String? = null
 
     private val _ui = MutableStateFlow(
-        // Restore the name after a restart so rejoining is one tap.
-        JoinUiState(name = store.name.orEmpty()),
+        JoinUiState(
+            name = store.name.orEmpty(),
+            avatar = store.avatar,
+        ),
     )
     val ui: StateFlow<JoinUiState> = _ui.asStateFlow()
+
+    fun openAvatarMaker() = _ui.update { it.copy(showAvatarMaker = true) }
+    fun closeAvatarMaker() = _ui.update { it.copy(showAvatarMaker = false) }
+    fun saveAvatar(spec: com.student.quiz.data.AvatarSpec) {
+        store.avatar = spec
+        _ui.update { it.copy(avatar = spec, showAvatarMaker = false) }
+    }
 
     fun onNameChange(value: String) = _ui.update { it.copy(name = value, error = null) }
 

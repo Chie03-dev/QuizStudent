@@ -11,11 +11,12 @@ object Protocol {
 
     const val PATH = "/ws"
 
-    fun join(pin: String, name: String, deviceToken: String): String {
+    fun join(pin: String, name: String, deviceToken: String, avatar: com.student.quiz.data.AvatarSpec? = null): String {
         val d = JSONObject()
             .put("pin", pin)
             .put("name", name)
             .put("deviceToken", deviceToken)
+        avatar?.let { d.put("avatar", it.toJson()) }
         return envelope("join", d)
     }
 
@@ -53,7 +54,7 @@ object Protocol {
 
     /** Decoded server -> phone messages. */
     sealed interface ServerMessage {
-        data class Joined(val studentId: String, val deviceToken: String?) : ServerMessage
+        data class Joined(val studentId: String, val deviceToken: String?, val avatar: com.student.quiz.data.AvatarSpec?) : ServerMessage
         data class Failure(val code: String) : ServerMessage
         data object Kick : ServerMessage
         data class QuizStartMessage(val quiz: com.student.quiz.data.QuizStart) : ServerMessage
@@ -91,6 +92,7 @@ object Protocol {
                 ServerMessage.Joined(
                     studentId = d.optString("studentId"),
                     deviceToken = d.optString("deviceToken").ifBlank { null },
+                    avatar = com.student.quiz.data.AvatarSpec.fromJson(d.optJSONObject("avatar")),
                 )
             }
             "error" -> ServerMessage.Failure(root.optJSONObject("d")?.optString("code").orEmpty())
