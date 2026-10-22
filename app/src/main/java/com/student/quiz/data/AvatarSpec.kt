@@ -44,7 +44,7 @@ data class AvatarSpec(
             val validFace = (face ?: 0).coerceIn(0, 6)
             val validEyes = (eyes ?: 2).coerceIn(0, 8)
             val validMouth = (mouth ?: 1).coerceIn(0, 6)
-            val validAccessory = (accessory ?: 0).coerceIn(0, 4)
+            val validAccessory = (accessory ?: 0).coerceIn(0, 6)
             return AvatarSpec(
                 seed = validSeed,
                 hue = validHue,

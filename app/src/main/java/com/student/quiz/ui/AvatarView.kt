@@ -272,19 +272,50 @@ private fun DrawScope.drawWimpyAccessory(accessory: Int, center: Offset, w: Floa
             drawRect(ink, topLeft = Offset(center.x + r * 0.1f, eyeY - r * 0.9f), size = Size(r * 2.2f, r * 1.8f))
             drawLine(ink, Offset(center.x - r * 0.1f, eyeY), Offset(center.x + r * 0.1f, eyeY), stroke.width * 1.3f, stroke.cap)
         }
-        3 -> { // Baseball Cap
-            val headTop = center.y - h * 0.44f
-            drawArc(ink, 180f, 180f, true, topLeft = Offset(center.x - w * 0.42f, headTop - w * 0.15f), size = Size(w * 0.84f, w * 0.4f))
-            val brim = Path().apply {
-                moveTo(center.x - w * 0.05f, headTop + w * 0.05f)
-                lineTo(center.x + w * 0.5f, headTop + w * 0.15f)
-                lineTo(center.x - w * 0.1f, headTop + w * 0.18f)
-            }
-            drawPath(brim, ink)
+        3 -> { // Cozy Beanie Hat with Pom-pom
+            val headTop = center.y - h * 0.42f
+            drawArc(Color(0xFFE53E3E), 180f, 180f, true, topLeft = Offset(center.x - w * 0.38f, headTop - w * 0.25f), size = Size(w * 0.76f, w * 0.5f))
+            drawArc(ink, 180f, 180f, true, topLeft = Offset(center.x - w * 0.38f, headTop - w * 0.25f), size = Size(w * 0.76f, w * 0.5f), style = stroke)
+            drawLine(ink, Offset(center.x - w * 0.36f, headTop), Offset(center.x + w * 0.36f, headTop), stroke.width, stroke.cap)
+            drawCircle(Color.White, w * 0.1f, Offset(center.x, headTop - w * 0.25f))
+            drawCircle(ink, w * 0.1f, Offset(center.x, headTop - w * 0.25f), style = stroke)
         }
         4 -> { // Headband
             val headY = center.y - h * 0.32f
-            drawArc(Color(0xFFE53E3E), 195f, 150f, false, topLeft = Offset(center.x - w * 0.42f, headY - w * 0.1f), size = Size(w * 0.84f, w * 0.2f), style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round))
+            drawArc(Color(0xFF3182CE), 195f, 150f, false, topLeft = Offset(center.x - w * 0.42f, headY - w * 0.1f), size = Size(w * 0.84f, w * 0.2f), style = Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round))
+        }
+        5 -> { // Bowtie
+            val chinY = center.y + h * 0.45f
+            val bw = w * 0.15f
+            val path = Path().apply {
+                moveTo(center.x, chinY)
+                lineTo(center.x - bw, chinY - bw * 0.6f)
+                lineTo(center.x - bw, chinY + bw * 0.6f)
+                close()
+                moveTo(center.x, chinY)
+                lineTo(center.x + bw, chinY - bw * 0.6f)
+                lineTo(center.x + bw, chinY + bw * 0.6f)
+                close()
+            }
+            drawPath(path, Color(0xFFD69E2E))
+            drawPath(path, ink, style = stroke)
+            drawCircle(ink, 4.dp.toPx(), Offset(center.x, chinY))
+        }
+        6 -> { // Crown
+            val headTop = center.y - h * 0.46f
+            val cw = w * 0.5f
+            val crownPath = Path().apply {
+                moveTo(center.x - cw / 2f, headTop + w * 0.15f)
+                lineTo(center.x - cw / 2f, headTop - w * 0.1f)
+                lineTo(center.x - cw / 4f, headTop)
+                lineTo(center.x, headTop - w * 0.15f)
+                lineTo(center.x + cw / 4f, headTop)
+                lineTo(center.x + cw / 2f, headTop - w * 0.1f)
+                lineTo(center.x + cw / 2f, headTop + w * 0.15f)
+                close()
+            }
+            drawPath(crownPath, Color(0xFFECC94B))
+            drawPath(crownPath, ink, style = stroke)
         }
         else -> {}
     }

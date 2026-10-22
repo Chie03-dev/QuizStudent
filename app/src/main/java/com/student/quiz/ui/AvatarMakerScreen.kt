@@ -40,7 +40,7 @@ fun AvatarMakerScreen(
     val faceNames = listOf("Round", "Soft", "Oval", "Square", "Heart", "Diamond", "Blob")
     val eyeNames = listOf("None", "Closed", "Open", "Wink", "Happy", "Squint", "Up", "Half", "Wide")
     val mouthNames = listOf("None", "Smile", "Grin", "Laughing", "Sad", "Neutral", "Surprised")
-    val accessoryNames = listOf("None", "Glasses", "Sunglasses", "Hat", "Headband")
+    val accessoryNames = listOf("None", "Glasses", "Sunglasses", "Beanie", "Headband", "Bowtie", "Crown")
 
     Column(
         modifier = modifier
