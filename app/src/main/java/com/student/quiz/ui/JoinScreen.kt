@@ -65,7 +65,7 @@ fun JoinScreen(
                 inputStream?.close()
 
                 if (original != null) {
-                    val maxDim = 200
+                    val maxDim = 64
                     val width = original.width
                     val height = original.height
                     val ratio = width.toFloat() / height.toFloat()
@@ -73,28 +73,37 @@ fun JoinScreen(
                     val newHeight: Int
                     if (width > height) {
                         newWidth = maxDim
-                        newHeight = (maxDim / ratio).toInt()
+                        newHeight = (maxDim / ratio).toInt().coerceAtLeast(1)
                     } else {
                         newHeight = maxDim
-                        newWidth = (maxDim * ratio).toInt()
+                        newWidth = (maxDim * ratio).toInt().coerceAtLeast(1)
                     }
                     val scaled = Bitmap.createScaledBitmap(original, newWidth, newHeight, true)
                     val outputStream = ByteArrayOutputStream()
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 65, outputStream)
                     val bytes = outputStream.toByteArray()
-                    val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    vm.updateProfileImage("data:image/jpeg;base64,$base64")
+                    var base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+                    if (base64.length > 10000) {
+                        val scaledSmall = Bitmap.createScaledBitmap(original, 48, 48, true)
+                        val out2 = ByteArrayOutputStream()
+                        scaledSmall.compress(Bitmap.CompressFormat.JPEG, 50, out2)
+                        base64 = Base64.encodeToString(out2.toByteArray(), Base64.NO_WRAP)
+                    }
+
+                    if (base64.length <= 10000) {
+                        vm.updateProfilePhoto(com.student.quiz.data.ProfilePhoto(data = base64, mime = "image/jpeg"))
+                    }
                 }
             }
         }
     }
 
-    val decodedBitmap = remember(state.profileImageBase64) {
-        val b64 = state.profileImageBase64
-        if (b64 != null) {
+    val decodedBitmap = remember(state.profilePhoto) {
+        val photo = state.profilePhoto
+        if (photo != null) {
             runCatching {
-                val cleanB64 = b64.substringAfter("base64,")
-                val bytes = Base64.decode(cleanB64, Base64.DEFAULT)
+                val bytes = Base64.decode(photo.data, Base64.DEFAULT)
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             }.getOrNull()
         } else null

@@ -92,7 +92,7 @@ data class JoinUiState(
     val status: String? = null,
     val error: String? = null,
     val showManualEntry: Boolean = false,
-    val profileImageBase64: String? = null,
+    val profilePhoto: com.student.quiz.data.ProfilePhoto? = null,
     val conn: ConnState? = null,
     val quiz: QuizUiState? = null,
     val meme: MemeState? = null,
@@ -167,14 +167,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _ui = MutableStateFlow(
         JoinUiState(
             name = store.name.orEmpty(),
-            profileImageBase64 = store.profileImageBase64,
+            profilePhoto = store.profilePhoto,
         ),
     )
     val ui: StateFlow<JoinUiState> = _ui.asStateFlow()
 
-    fun updateProfileImage(base64: String?) {
-        store.profileImageBase64 = base64
-        _ui.update { it.copy(profileImageBase64 = base64) }
+    fun updateProfilePhoto(photo: com.student.quiz.data.ProfilePhoto?) {
+        store.profilePhoto = photo
+        _ui.update { it.copy(profilePhoto = photo) }
     }
 
     fun onNameChange(value: String) = _ui.update { it.copy(name = value, error = null) }

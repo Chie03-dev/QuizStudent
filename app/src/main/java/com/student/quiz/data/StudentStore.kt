@@ -28,9 +28,19 @@ class StudentStore(context: Context) {
         get() = prefs.getString(KEY_NAME, null)
         set(value) = prefs.edit().putString(KEY_NAME, value).apply()
 
-    var profileImageBase64: String?
-        get() = prefs.getString(KEY_PROFILE_IMAGE, null)
-        set(value) = prefs.edit().putString(KEY_PROFILE_IMAGE, value).apply()
+    var profilePhoto: ProfilePhoto?
+        get() {
+            val data = prefs.getString(KEY_PHOTO_DATA, null)
+            val mime = prefs.getString(KEY_PHOTO_MIME, "image/jpeg")
+            if (data.isNullOrBlank()) return null
+            return ProfilePhoto(data = data, mime = mime ?: "image/jpeg")
+        }
+        set(value) {
+            prefs.edit()
+                .putString(KEY_PHOTO_DATA, value?.data)
+                .putString(KEY_PHOTO_MIME, value?.mime)
+                .apply()
+        }
 
     /** Last session address, so the app can offer to rejoin after a restart. */
     var lastIp: String?
@@ -72,7 +82,8 @@ class StudentStore(context: Context) {
         const val KEY_TOKEN = "device_token"
         const val KEY_STUDENT_ID = "student_id"
         const val KEY_NAME = "name"
-        const val KEY_PROFILE_IMAGE = "profile_image_base64"
+        const val KEY_PHOTO_DATA = "photo_data"
+        const val KEY_PHOTO_MIME = "photo_mime"
         const val KEY_LAST_IP = "last_ip"
         const val KEY_LAST_PORT = "last_port"
         const val KEY_LAST_PIN = "last_pin"

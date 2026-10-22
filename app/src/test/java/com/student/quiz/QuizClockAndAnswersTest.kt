@@ -205,12 +205,16 @@ class AnswerSerializationTest {
     }
 
     @Test
-    fun `join encodes profileImageBase64 in avatar field`() {
-        val envelope = org.json.JSONObject(Protocol.join("1234", "Alice", "token123", "data:image/jpeg;base64,abc"))
+    fun `join encodes photo object in join payload`() {
+        val photo = com.student.quiz.data.ProfilePhoto(data = "rawBase64Data", mime = "image/jpeg")
+        val envelope = org.json.JSONObject(Protocol.join("1234", "Alice", "token123", photo))
         assertEquals("join", envelope.getString("t"))
         assertEquals("1234", envelope.getJSONObject("d").getString("pin"))
         assertEquals("Alice", envelope.getJSONObject("d").getString("name"))
         assertEquals("token123", envelope.getJSONObject("d").getString("deviceToken"))
-        assertEquals("data:image/jpeg;base64,abc", envelope.getJSONObject("d").getString("avatar"))
+
+        val photoJson = envelope.getJSONObject("d").getJSONObject("photo")
+        assertEquals("rawBase64Data", photoJson.getString("data"))
+        assertEquals("image/jpeg", photoJson.getString("mime"))
     }
 }
